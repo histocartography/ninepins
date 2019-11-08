@@ -41,41 +41,13 @@ class PreActResBlock(nn.Module):
     def forward(self,x):
         #out = F.relu(self.bn0(x))
         #shortcut = self.convshortcut(out) if hasattr(self, 'shortcut') else x
-        print("SELF COUNT")
-        print(self.count)
-        print(x.shape)
         out = self.preact(x) if hasattr(self,'preact') else x
-        if hasattr(self,'preact'):
-            print("PREACT")
-        else:
-            print("No preact")
-        print("After preact")
-        print(out.shape)
         out = self.conv1(out)
-        print("out after conv")
-        print(out.shape)
         out = self.conv2(F.relu(self.bn1(out)))
-        print("After conv2")
-        print(out.shape)
         out = self.conv3(F.relu(self.bn2(out)))
-        print("After conv3")
-        print(out.shape)
         shortcut = self.convshortcut(x) if hasattr(self, 'convshortcut') else x
-        if hasattr(self, 'convshortcut'):
-            print("Shortcut")
-            print(shortcut.shape)
-        else:
-            print("No scut")
-            #print(shortcut.shape)
-            print(out.shape)
-        #print("Shorcut")
-        #print(shortcut.shape)
-        #out = self.bn3(self.conv3(out))
         out += shortcut
         out = self.bnlast(out) if hasattr(self,'bnlast') else out
-
-        #out = F.relu(out)
-        #self.count +=1
         return out
 
 class Dense_block(nn.Module):
@@ -129,20 +101,15 @@ class Encoder(nn.Module):
             if block == 0:
                 layers.append(building_block(self.ch_in, ch_out, [1, 3, 1],block,num_blocks,stride))
             else:
-                #layers.append(self.preact)
+
                 layers.append(building_block(self.ch_in, ch_out, [1, 3, 1], block,num_blocks,1))
 
             self.ch_in = ch_out * 4
-        #layers.append(self.bnlast)
-
         return nn.Sequential(*layers)
 
     def forward(self,x):
         #out = F.relu(self.BN1(self.preact(x))) if block
         out1 = self.group0(x)
-        print("x")
-        print(x.shape)
-        print(out1.shape)
         out2 = self.group1(out1)
         out3 = self.group2(out2)
         out4 = self.group3(out3)
@@ -159,7 +126,7 @@ class Decoder(nn.Module):
         self.convc = nn.Conv2d(512,128,kernel_size=5,stride=1)
         self.u2_dense_blk = self.construct_layer_dense(block,128,num_blocks[1])
         self.convd = nn.Conv2d(256,256,kernel_size=1)
-        self.conve = nn.Conv2d(256,64,kernel_size=5) #TODO: check padding
+        self.conve = nn.Conv2d(256,64,kernel_size=5, padding=2)
 
 
     def construct_layer_dense(self,building_block,in_ch,num_blocks):
@@ -169,34 +136,22 @@ class Decoder(nn.Module):
             in_ch += 32
         return nn.Sequential(*layers_d)
 
-    def forward(self,x):
+    def forward(self, x):
         out = self.upsample(x[-1])
-        print("Upsampling output of enc")
-        print(out.shape)
-        out = torch.add(out,x[-2])
-        print("After adding")
-        print(out.shape)##ERROR!!!!! The size of tensor a (250) must match the size of tensor b (249) at non-singleton dimension 3##TODO: need to check upsampling and adding
+        out = torch.add(out, x[-2])
         out = self.conva(out)
-        print(out.shape)
         out = self.u3_dense_blk(out)
-        print(out.shape)
         out1 = self.convb(out)
-        print(out1.shape)
         out = self.upsample(out1)
-        print(out.shape)
         out = torch.add(out, x[-3])
-        print(out.shape)
         out2 = self.convc(out)
-        print(out2.shape)
         out = self.u2_dense_blk(out2)
-        print(out.shape)
         out = self.convd(out)
-        print(out.shape)
         out = self.upsample(out)
-        print(out.shape)
         out = torch.add(out, x[-4])
-        print(out.shape)
         out = self.conve(out)
+        print("Final output shape")
+        print(out.shape)
 
         return [out1, out2, out]
 
@@ -204,13 +159,13 @@ class Decoder(nn.Module):
 #04.11
 
 class Net(nn.Module):
-    def __init__(self, constant_weight):
+    def __init__(self):
         super(Net, self).__init__()
 
         self.conv0 = nn.Conv2d(3, 64, kernel_size=7, stride=1,bias=False)
         self.conv_params = list(self.conv0.parameters())
         #self.conv0.weight = self.conv0.weight.permute(2, 3, 1, 0)
-        self.BN1 = nn.BatchNorm2d(64)  # TODO: remove num_batches_tracked in weights
+        self.bn = nn.BatchNorm2d(64)  # TODO: remove num_batches_tracked in weights
         self.encoder = Encoder(PreActResBlock, [3, 4, 6, 3])
         self.conv_bot = nn.Conv2d(2048, 1024, kernel_size=1, bias=False)
         self.decoder_np = Decoder(Dense_block, [8, 4])
@@ -223,22 +178,20 @@ class Net(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
         #added for testing(constant weights)
-        if(constant_weight is not None):
+        '''if(constant_weight is not None):
             for m in self.modules():
                 if isinstance(m, nn.Linear):
                     nn.init.constant_(m.weight, constant_weight)
-                    nn.init.constant_(m.bias, 0)
+                    nn.init.constant_(m.bias, 0)'''
 
     def forward(self,input):
         #added for testing: weights_init
         #self.weights_init()
-        out = F.relu(self.BN1(self.conv0(input)))
+        out = F.relu(self.bn(self.conv0(input)))
         print(out.shape)
 
         output_enc = self.encoder(out) #self.encoder.forward(out)
         out4 = self.conv_bot(output_enc[3])
-        print("output of encoder")
-        print(out4.shape)
         output_enc[0] = self.crop_op(output_enc[0], (184,184))
         output_enc[1] = self.crop_op(output_enc[1], (72, 72))
         output_enc[3] = out4
@@ -265,7 +218,7 @@ class Net(nn.Module):
         true_hv = truemap_coded[...,-2:]
 
         ##### NP Branch #####
-        output_dec_np = self.decoder_np(output_enc)#self.decoder_np.forward(output_enc)
+        output_dec_np = self.decoder_np(output_enc) #self.decoder_np.forward(output_enc)
         output_dec_npx = F.relu(self.BatchNorm(output_dec_np[-1]))
 
         logi_np = self.conv_np(output_dec_npx)
@@ -275,7 +228,7 @@ class Net(nn.Module):
         prob_np = torch.unsqueeze(prob_np,-1) #expand_dims
 
         ##### NC Branch #####
-        output_dec_nc = self.decoder_nc(output_enc)#self.decoder_nc.forward(output_enc)
+        output_dec_nc = self.decoder_nc(output_enc) #self.decoder_nc.forward(output_enc)
         output_dec_ncx = F.relu(self.BatchNorm(output_dec_nc[-1]))
 
         logi_class = self.conv_tp(output_dec_ncx)
@@ -283,7 +236,7 @@ class Net(nn.Module):
         soft_class = self.softmax(logi_class)
 
         ##### HoVer Branch #####
-        output_dec_hv = self.decoder_hv(output_enc)#self.decoder_hv.forward(output_enc)
+        output_dec_hv = self.decoder_hv(output_enc) #self.decoder_hv.forward(output_enc)
         output_dec_hvx = F.relu(self.BatchNorm(output_dec_hv[-1]))
 
         logi_hv = self.conv_hv(output_dec_hvx)
@@ -327,38 +280,3 @@ class Net(nn.Module):
         else:
             x = x[:, crop_t:-crop_b, crop_l:-crop_r]
         return x
-
-
-
-
-
-
-
-
-
-'''def PreActResNet():
-    return Encoder(PreActResBlock, [3,4,6,3]) ##TODO: add self.freeze value: true or false
-
-def NP():
-    return Decoder(Dense_block, [8,4])
-
-
-def test():
-    encoder_net= PreActResNet()
-    decoder_input = encoder_net #TODO: Add input : remove torch.randn
-    decoder_net = NP()
-    return decoder_net
-    y = net() "ADD input" 
-
-class EncoderDecoder(nn.module):
-    def __init__(self, ):
-        super(EncoderDecoder, self).__init__()
-
-        self.encoder = Encoder(PreActResBlock, [3,4,6,3])
-        self.decoder = Decoder(Dense_block, [8,4])
-
-    def forward(self,x):
-        z = self.encoder(x)
-        output= self.decoder(z)
-        
-        return output'''
