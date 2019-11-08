@@ -122,28 +122,55 @@ class Inferer(Config):
     ####
     def load_weights(self,weights_file):
         weights = np.load(weights_file)
-        keys = weights.keys()
+        keys = sorted(weights.keys())
+        f = open("original_model_weights.txt", "w+")
         for i, k in enumerate(keys):
-            print(i, k, np.shape(weights[k]))
+            #print(i, k, np.shape(weights[k]))
+            f.write("%d %s %s \n" %(i, k, np.shape(weights[k])))
+        f.close()
+
 
     def run(self):
 
-        #Load weights
-        print("##### Loading weights #####")
-        self.load_weights(self.weight_file)
+        data = np.load('/dataT/frd/Test/hover_seg_&_class_CoNSeP.npz')
+        dictionary = {}
+        #data = np.load('/Users/frd/Documents/Code/CoNSeP/Train/hover_seg_&_class_CoNSeP.npz')
+        lst = data.files
+        for item in lst:
+            dictionary[item] = torch.from_numpy(data[item])  # .permute(3,2,0,1)
+
+        for key, value in dictionary.items():
+            if dictionary[key].dim() == 4:
+                dictionary[key] = dictionary[key].permute(3, 2, 0, 1)
+
+        print("shape")
+        print(dictionary['hv/u3/dense/blk/3/conv1/W:0'].shape)
+
+        #print(dictionary)
+
+        #self.load_weights(self.weight_file)
         #Model = self.get_model()
         print("##### Loading Model #####")
-        model = Net(self.constant_weight)
+        model = Net()
 
-        #model.load_state_dict(torch.from_numpy(np.load(self.weight_file)))
+        model.load_state_dict(dictionary, strict=False)
         print("Model and weights LOADED successfully")
+        print("Printing weights of our model")
+        i=0
+
+        #commenting out
+        g = open("pytorch_model_weights.txt", "w+")
+
+        for param_tensor in model.state_dict():
+            print(i, param_tensor, "\t", model.state_dict()[param_tensor].size())
+            g.write("%d  %s  %s \n" %(i, param_tensor, model.state_dict()[param_tensor].size()))
+            i +=1
+        g.close()
 
         if torch.cuda.is_available():
             model.cuda()
 
         model.eval()
-        #Saving model
-        #torch.save(model.state_dict(), self.inf_output_dir)
 
         #Loading images
         print("Loading Images")
@@ -162,28 +189,6 @@ class Inferer(Config):
             print(img)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            #self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-            '''if torch.cuda.is_available():
-                img = torch.from_numpy(img).float().to(self.device)
-                img.cuda()
-
-           # Turn the input into a Variable
-            i = Variable(img)
-            #Image format should be [batch_size,channels,height,width
-            #Add dimension for batch
-            image_tensor = i.unsqueeze_(0)
-            #transpose
-            image_tensor = image_tensor.permute(0,3,1,2)
-
-            inp = image_tensor if not self.input_norm else image_tensor / 255.0
-
-            # Predict class
-            #with torch.no_grad():
-            #    predictor = model(inp)'''
-
-
-            ##
             pred_map = self.__gen_prediction(img, model)
             sio.savemat('%s/%s.mat' % (save_dir, basename), {'result': [pred_map]})
             print('FINISH')
