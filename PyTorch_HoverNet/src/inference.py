@@ -10,10 +10,11 @@ from scipy import io as sio
 ## add for predicting and model loader
 
 from config import Config
-from misc.utils import rm_n_mkdir
+from model.utils import rm_n_mkdir
 from torch.autograd import Variable
 
 import torch
+from model.graph import Net
 
 import json
 import operator
@@ -23,7 +24,8 @@ import time
 
 
 class Inferer(Config):
-    def __gen_prediction(self, x, predictor):
+
+    def __gen_prediction(self,x, predictor):
         """
         Using 'predictor' to generate the prediction of image 'x'
 
@@ -31,7 +33,7 @@ class Inferer(Config):
             x : input image to be segmented. It will be split into patches
                 to run the prediction upon before being assembled back
         """
-        step_size = self.infer_mask_shape  # check opt/hover.py
+        step_size = self.infer_mask_shape
         msk_size = self.infer_mask_shape
         win_size = self.infer_input_shape
 
@@ -42,11 +44,14 @@ class Inferer(Config):
 
         im_h = x.shape[0]
         im_w = x.shape[1]
+        #img = x
+        #x = x.cpu().numpy()
 
         last_h, nr_step_h = get_last_steps(im_h, msk_size[0], step_size[0])
         last_w, nr_step_w = get_last_steps(im_w, msk_size[1], step_size[1])
 
         diff_h = win_size[0] - step_size[0]
+
         padt = diff_h // 2
         padb = last_h + win_size[0] - im_h
 
@@ -64,18 +69,38 @@ class Inferer(Config):
                 win = x[row:row + win_size[0],
                       col:col + win_size[1]]
                 sub_patches.append(win)
+                #sub_patches = torch.cat(win)
+        sub_patches = torch.FloatTensor(sub_patches)
+        print(sub_patches.shape)
+        sub_patches = sub_patches.permute(0,3,1,2)
+        if torch.cuda.is_available():
+            sub_patches = sub_patches.to(self.device)
+            sub_patches.cuda()
 
         pred_map = deque()
         while len(sub_patches) > self.inf_batch_size:  # check opt/hover.py
             mini_batch = sub_patches[:self.inf_batch_size]
+            #print((np.array(mini_batch)).shape)
             sub_patches = sub_patches[self.inf_batch_size:]
-            mini_output = predictor(mini_batch)[0]
-            mini_output = np.split(mini_output, self.inf_batch_size, axis=0)
-            pred_map.extend(mini_output)
+            print("TYPE: mini batch")
+            print(type(mini_batch))
+            print(mini_batch.shape)
+            #if torch.cuda.is_available():
+                #sub_patches = torch.from_numpy(sub_patches).float().to(self.device)
+            #    mini_batch.cuda()
+            with torch.no_grad():
+                mini_output = predictor(mini_batch)
+                print("Mini-output")#[0]
+                print(mini_output.shape)
+            mini_output_np = mini_output.cpu().numpy()
+            mini_output_np = np.split(mini_output_np, self.inf_batch_size, axis=0)
+            pred_map.extend(mini_output_np)
         if len(sub_patches) != 0:
-            mini_output = predictor(sub_patches)[0]
-            mini_output = np.split(mini_output, len(sub_patches), axis=0)
-            pred_map.extend(mini_output)
+            with torch.no_grad():
+                mini_output = predictor(sub_patches)#[0]
+            mini_output_np = mini_output.cpu().numpy()
+            mini_output_np = np.split(mini_output_np, len(sub_patches), axis=0)
+            pred_map.extend(mini_output_np)
 
         #### Assemble back into full image
         output_patch_shape = np.squeeze(pred_map[0]).shape
@@ -92,22 +117,36 @@ class Inferer(Config):
 
         return pred_map
 
+
+
     ####
-    def load_weights(self, model,weights_file, ):
+    def load_weights(self,weights_file):
         weights = np.load(weights_file)
-        keys = sorted(weights.keys())
+        keys = weights.keys()
         for i, k in enumerate(keys):
             print(i, k, np.shape(weights[k]))
 
     def run(self):
 
         #Load weights
+        print("##### Loading weights #####")
         self.load_weights(self.weight_file)
-        Model = self.get_model()
-        Model.load_state_dict(torch.from_numpy(np.load(self.weight_file)))
-        Model.eval()
+        #Model = self.get_model()
+        print("##### Loading Model #####")
+        model = Net(self.constant_weight)
+
+        #model.load_state_dict(torch.from_numpy(np.load(self.weight_file)))
+        print("Model and weights LOADED successfully")
+
+        if torch.cuda.is_available():
+            model.cuda()
+
+        model.eval()
+        #Saving model
+        #torch.save(model.state_dict(), self.inf_output_dir)
 
         #Loading images
+        print("Loading Images")
         save_dir = self.inf_output_dir
         file_list = glob.glob('%s/*%s' % (self.inf_data_dir, self.inf_imgs_ext))
         file_list.sort()
@@ -117,28 +156,35 @@ class Inferer(Config):
         for filename in file_list:
             filename = os.path.basename(filename)
             basename = filename.split('.')[0]
-            print(self.inf_data_dir, basename, end=' ', flush=True)
 
-            ##
-            #loading images and transforming
-            img = cv2.imread(self.inf_data_dir + filename) #Changed
+            #img = cv2.imread(data_dir + filename)
+            img = cv2.imread(self.inf_data_dir+filename) #Changed
+            print(img)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            if torch.cuda.is_available():
+            #self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+            '''if torch.cuda.is_available():
+                img = torch.from_numpy(img).float().to(self.device)
                 img.cuda()
 
-            # Turn the input into a Variable
+           # Turn the input into a Variable
             i = Variable(img)
             #Image format should be [batch_size,channels,height,width
             #Add dimension for batch
             image_tensor = i.unsqueeze_(0)
+            #transpose
+            image_tensor = image_tensor.permute(0,3,1,2)
 
             inp = image_tensor if not self.input_norm else image_tensor / 255.0
+
             # Predict class
-            predictor = Model(inp)
+            #with torch.no_grad():
+            #    predictor = model(inp)'''
+
 
             ##
-            pred_map = self.__gen_prediction(img, predictor)
+            pred_map = self.__gen_prediction(img, model)
             sio.savemat('%s/%s.mat' % (save_dir, basename), {'result': [pred_map]})
             print('FINISH')
 
@@ -153,5 +199,8 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     n_gpus = len(args.gpu.split(','))
 
+    cuda_avail = torch.cuda.is_available()
+
     inferer = Inferer()
     inferer.run()
+
