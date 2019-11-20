@@ -8,6 +8,7 @@ from histocartography.io.wsi import WSI
 from histocartography.io.annotations import ImageAnnotation
 from histocartography.io.annotations import XMLAnnotation
 from histocartography.io.annotations import CSVAnnotation
+from histocartography.io.annotations import ASAPAnnotation
 
 ANNOTATION_LOADER = {
     '.png': ImageAnnotation,
@@ -110,13 +111,18 @@ class WSIPatchSegmentationDataset(Dataset):
             input_fn (function): function to be applied to every input patch
             label_fn (function): function to be applied to every label patch
         """
-
-        _, file_extension = os.path.splitext(label_file)
-        loaded_labels = ANNOTATION_LOADER[file_extension](label_file)
+        
+        if label_file is not None:
+            _, file_extension = os.path.splitext(label_file)
+            loaded_labels = ANNOTATION_LOADER[file_extension](label_file)
+        else:
+            loaded_labels = None
         
         self.patch_size = patch_size
         self.label_fn = label_fn
         self.input_fn = input_fn
+
+        self.mag = mag
 
         self.wsi = WSI(input_file, loaded_labels)
         self.patches_info = self.wsi.patch_positions(
@@ -129,7 +135,7 @@ class WSIPatchSegmentationDataset(Dataset):
         downsample, level, xy_positions = self.patches_info
         
         patch, labels = self.wsi.get_patch_with_labels(
-            downsample, level, xy_positions[index], self.patch_size
+            self.mag, xy_positions[index], self.patch_size
         )
 
         if self.label_fn is not None:

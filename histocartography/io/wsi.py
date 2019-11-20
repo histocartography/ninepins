@@ -11,8 +11,10 @@ from scipy.sparse import coo_matrix
 from lxml import etree
 from openslide import open_slide
 
-from .annotations import XMLAnnotation
+from .annotations import XMLAnnotation, ASAPAnnotation
 
+import time
+import random
 # from PIL import Image, ImageDraw
 
 # setup logging
@@ -83,6 +85,9 @@ class WSI:
         self.minimum_tissue_content = minimum_tissue_content
         self.annotations = annotations
 
+        self.kernel = np.ones((5, 5),np.uint8)
+
+        self.filename, _ = os.path.splitext(os.path.basename(wsi_file))
         log.debug('wsi_file : %s', self.wsi_file)
 
         if os.path.isfile(self.wsi_file):
@@ -122,12 +127,15 @@ class WSI:
         # log.debug('Downsamples: %s', self.downsamples)
         # log.debug('Possible resolutions: %s', self.available_mags)
 
-    def image_at(self, mag=5):
+    def image_at(self, mag=5, downsample=None):
         """gets the image at a desired mag level
         """
 
         # log.debug('Downsample for desired resolution : %s', self.mag / mag)
-        level = self.stack.get_best_level_for_downsample(self.mag / mag)
+        if downsample:
+            level = self.stack.get_best_level_for_downsample(downsample)
+        else:
+            level = self.stack.get_best_level_for_downsample(self.mag / mag)
 
         log.debug('Level for desired resolution : %s', level)
 
@@ -191,14 +199,14 @@ class WSI:
 
         return threshold
 
-    def tissue_mask_at(self, mag=5):
+    def tissue_mask_at(self, mag=5, downsample=None):
         """gets the tissue mask at a desired mag level
         """
 
         if self.current_mag == mag and self.current_image is not None:
             image = self.current_image
         else:
-            image = self.image_at(mag)
+            image = self.image_at(mag, downsample)
 
         img_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         img_inv = (255 - img_gray)  # invert the image intensity
@@ -249,7 +257,9 @@ class WSI:
         stride=(128, 128),
         mag=5,
         shuffle=False,
-        annotations=False
+        annotations=False,
+        use_label_mask=False,
+        xy_from_mask=False
     ):
         """
         Patches generator. It initializes with shape and stride for a given
@@ -269,48 +279,104 @@ class WSI:
 
         full_width = self.stack.level_dimensions[0][0]
         full_height = self.stack.level_dimensions[0][1]
+        if xy_from_mask:
+            downsample, level, xy_positions = self._tissue_positions(
+                origin, size, stride, mag, use_label_mask
+            )
+        else:
+            downsample, level, xy_positions = self.patch_positions(
+                origin, size, stride, mag 
+            )
 
-        downsample, level, xy_positions = self.patch_positions(
-            origin, size, stride, mag
-        )
 
-        tissue_threshold = self.tissue_threshold()
         num_pixels = size[0] * size[1]
-        for x, y in xy_positions:
+        tissue_threshold = self.tissue_threshold()*2
 
+        for x, y in xy_positions:
+            #log.debug(f'{x} : {y}')
             x_mag = int(x / downsample)
             y_mag = int(y / downsample)
 
-            region, patch_labels = self.get_patch_with_labels(
-                downsample, level, (x, y), size
-            )
-            # log.debug(
-            #     f'THRESHOLD: {tissue_threshold}  -- Darkest: {np.min(gray)}, Brightest: {np.max(gray)}, Average: {np.mean(gray)}'
-            # )
-            tissue_ratio = self._calculate_tissue_ratio(region, tissue_threshold, num_pixels)
-            #log.debug(
-            #    "Region {},{} has {:.2f} pixels ratio".format(x, y,
-            #    tissue_ratio
-            #))
+            region, region_time = self._get_patch(level, (x, y), size)
 
-            #if tissue_pixels / num_pixels >= self.minimum_tissue_content:
-            if  tissue_ratio >= self.minimum_tissue_content:
-                yield (
-                    x, y, full_width, full_height, x_mag, y_mag, region,
-                    patch_labels
-                )
+            tissue_mask, tissue_ratio = self._calculate_tissue_ratio(region,
+                tissue_threshold, num_pixels)
+            patch_labels = self._get_labels(downsample, level, (x, y), size)
+            # if trying to get normal tissue, make sure its not tumor tissue
+            release_patch = False
+            tumor_ratio = np.sum(patch_labels)/num_pixels
+            if use_label_mask:
+                if (tumor_ratio > 0.90) and (tissue_ratio >= self.minimum_tissue_content):
+                    release_patch = True
+            else:
+                if (tumor_ratio < 0.01) and (tissue_ratio >= self.minimum_tissue_content):
+                    release_patch = True
+
+            if release_patch:
+                yield {'x': x,
+                       'y': y,
+                       'mag': mag,
+                       'region': region,
+                       'annotation': patch_labels}
+                #yield (
+                #    x, y, full_width, full_height, x_mag, y_mag, region,
+                #    patch_labels, mask_time, region_time # tissue_mask, tissue_ratio
+                #)
+
     def _calculate_tissue_ratio(self, region, tissue_threshold, num_pixels):
-        kernel = np.ones((7,7),np.uint8)
+
         gray = cv2.cvtColor(region, cv2.COLOR_RGB2GRAY)
         th, thresholded = cv2.threshold(gray,
                                         tissue_threshold,
                                         255,
                                         cv2.THRESH_BINARY)
-        closed_region = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, kernel)
+        closed_region = cv2.morphologyEx(thresholded, cv2.MORPH_OPEN, self.kernel)
         tissue_pixels = np.sum(closed_region < tissue_threshold)
-        return tissue_pixels / num_pixels
+        return closed_region, tissue_pixels / num_pixels
 
-    def get_patch_with_labels(self, downsample, level, xy_position, size):
+    def _get_closest(self, coord, downsample):
+        closest_valid =  tuple(int(x) for x in
+                               np.round(np.array(coord)/downsample)*downsample)
+        return closest_valid
+
+    def get_patch_with_labels(self, mag, xy_position, size):
+        downsample = self.mag / mag
+        level = self.stack.get_best_level_for_downsample(downsample)
+        downsample = self.downsamples[level]
+        #make sure xy_position is a valid position for desired magnification
+        xy_position = self._get_closest(xy_position, downsample)
+        region, region_time = self._get_patch(level, xy_position, size)
+        labels = self._get_labels(downsample, level, xy_position, size)
+        return region, labels #, mask_time, region_time
+
+    def _get_patch(self, level, xy_position, size):
+        x, y = xy_position
+        start = time.time()
+        try:
+            region = np.array(
+                self.stack.read_region((x, y), level, size)#.convert("RGB")
+            )
+
+        except OSError:
+            log.warning(
+                f'Patch error at {x},{y} of size {size} from {self.wsi_file}'
+            )
+            region = np.zeros((size[0], size[1], 3), dtype=np.uint8)
+        #pad with white at the border patches
+        region = region[:,:,:3]
+        region[np.all(region == [0, 0, 0], axis=-1)] = 255
+        region_time = time.time() - start
+        return region, region_time
+
+
+    def _get_labels(self, downsample, level, xy_position, size):
+        x, y = xy_position
+        patch_labels = np.zeros(size, dtype=np.uint8)
+        if self.annotations is not None:
+            patch_labels = self.annotations.mask(size, (x, y), downsample)
+        return patch_labels
+
+    def _get_patch_with_labels(self, downsample, level, xy_position, size):
         x, y = xy_position
         patch_labels = np.zeros(size, dtype=np.uint8)
         if self.annotations is not None:
@@ -329,6 +395,73 @@ class WSI:
         #patch_labels = self.annotations.mask(size, (x, y), downsample)
         return region, patch_labels
 
+    def _tissue_positions(
+        self, origin=(0, 0), size=(128, 128), stride=(128, 128), mag=5, use_label_mask=False
+    ):
+
+        full_width = self.stack.level_dimensions[0][0]
+        full_height = self.stack.level_dimensions[0][1]
+        downsample = self.mag / mag
+        level = self.stack.get_best_level_for_downsample(downsample)
+        downsample = self.downsamples[level]
+        log.debug("level is: {}".format(level))
+        log.debug("downsample is: {}".format(downsample))
+
+        if (origin[0] % downsample != 0) or (origin[1] % downsample != 0):
+            log.warning(f'Origin {origin} is not a multiple of {downsample}!!')
+        #get tissue mask, generate valid tissue positions from pixels
+        # might need to do some smoothing & other things for best results on mask
+        #mask = self.tissue_mask_at(0.2)
+        # lets try with label mask
+        mask_downsample = 32
+        if use_label_mask:
+            mask = self.annotations.mask((full_width//mask_downsample,
+                                         full_height//mask_downsample),
+                                         origin, mask_downsample)
+        else:
+            mask = self.tissue_mask_at(0.2, mask_downsample)
+            # remove border
+            bw_x = (full_width//20)//mask_downsample
+            bw_y = (full_height//20)//mask_downsample
+            print(bw_x)
+            print(bw_y)
+            border_mask = np.zeros_like(mask)
+            border_mask[3*bw_y:-bw_y, 2*bw_x:-bw_x] = mask[3*bw_y:-bw_y,2*bw_x:-bw_x]
+            mask = border_mask
+            cv2.imwrite(f'/Users/sam/Documents/coding/tmp/mask_{self.filename}.png', mask)
+        kernel = np.ones((25,25),np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        indices = np.nonzero(mask)
+        #horiz_step = int(stride[0] * downsample)
+        #vert_step = int(stride[1] * downsample)
+        #x_positions = np.arange(origin[0], full_width, horiz_step)
+        #y_positions = np.arange(origin[1], full_height, vert_step)
+
+        #calculate original indices from mask indices
+        x_pos = indices[1]*mask_downsample
+        y_pos = indices[0]*mask_downsample
+        # skip closeby indices to make sure step is stride
+        #x_step = stride[0] // (mask_downsample // downsample)
+        #y_step = stride[1] // (mask_downsample // downsample)
+        # accept overlapping patches
+        x_step = 1
+        y_step = 1
+        x_pos = x_pos[::x_step]
+        y_pos = y_pos[::y_step]
+
+        xy_positions = list(zip(x_pos, y_pos))
+        #log.debug(xy_positions)
+        random.shuffle(xy_positions)
+        log.debug('{} XY Positions generated'.format(len(xy_positions)))
+        #log.debug('Level for desired resolution : %s', level)
+        #log.debug('Step size : %s %s', horiz_step, vert_step)
+        #log.debug('Num Patches : x: %s y: %s', len(x_positions), len(y_positions))
+        #log.debug(f'Positions: {xy_positions}')
+
+
+        return downsample, level, xy_positions
+
     def patch_positions(
         self, origin=(0, 0), size=(128, 128), stride=(128, 128), mag=5
     ):
@@ -341,20 +474,23 @@ class WSI:
         level = self.stack.get_best_level_for_downsample(downsample)
         downsample = self.downsamples[level]
         log.debug(f'Actual Magnification is: {self.available_mags[level]}')
-        log.debug(f'Downsample required would  be: {downsample}')
+        log.debug(f'Actual downsample: {downsample}')
 
         if (origin[0] % downsample != 0) or (origin[1] % downsample != 0):
             log.warning(f'Origin {origin} is not a multiple of {downsample}!!')
 
         horiz_step = int(stride[0] * downsample)
         vert_step = int(stride[1] * downsample)
-        x_positions = np.arange(origin[0], full_width, horiz_step)
-        y_positions = np.arange(origin[1], full_height, vert_step)
-        xy_positions = list(itertools.product(x_positions, y_positions))
-
+        x_positions = np.arange(origin[0], full_width - horiz_step, horiz_step)
+        y_positions = np.arange(origin[1], full_height - vert_step, vert_step)
+        xy_positions = list(itertools.product(x_positions, y_positions)) 
+        
+        log.debug(xy_positions)
         log.debug('Level for desired resolution : %s', level)
         log.debug('Step size : %s %s', horiz_step, vert_step)
-        log.debug('Num Patches : %s %s', len(x_positions), len(y_positions))
+
+        log.debug('Num Patches : x: %s y: %s', len(x_positions), len(y_positions))
+
         #log.debug(f'Positions: {xy_positions}')
 
 

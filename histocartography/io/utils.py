@@ -3,6 +3,9 @@ import os
 import logging
 import sys
 import boto3
+import math
+
+from ftplib import FTP
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -14,6 +17,116 @@ formatter = logging.Formatter(
 )
 h1.setFormatter(formatter)
 log.addHandler(h1)
+
+
+def open_ftp_connection(ftp_host):
+
+    ftp_connection = FTP(ftp_host)
+    ftp_connection.connect()
+    ftp_connection.login()
+    return ftp_connection
+
+
+def transfer_file_from_ftp_to_s3(s3_connection,
+                                 ftp_connection,
+                                 bucket_name,
+                                 ftp_file_path,
+                                 s3_file_path):
+    ftp_file_size = ftp_connection.size(ftp_file_path)
+
+    try:
+            s3_file = s3_connection.head_object(Bucket = bucket_name,
+                                  Key = s3_file_path)
+            if s3_file['ContentLength'] == ftp_file_size:
+                    print('File Already Exists in S3 bucket')
+                    return
+    except Exception as e:
+            pass
+
+    print('Transferring File from FTP to S3 in chunks...')
+    #upload file in chunks
+    multipart_upload = s3_connection.create_multipart_upload(Bucket = bucket_name,
+                                                             Key = s3_file_path)
+    s3_up = s3_upload(
+            s3_connection,
+            multipart_upload,
+            bucket_name,
+            ftp_file_path,
+            s3_file_path,
+            ftp_file_size
+    )
+    ftp_connection.retrbinary(f'RETR {ftp_file_path}',
+                              s3_up.cback)
+    s3_up.finalize()
+    part_info = {
+            'Parts': s3_up.parts
+    }
+    s3_connection.complete_multipart_upload(
+    Bucket = bucket_name,
+    Key = s3_file_path,
+    UploadId = multipart_upload['UploadId'],
+    MultipartUpload = part_info
+    )
+    print('All chunks Transferred to S3 bucket! File Transfer successful!')
+
+class s3_upload():
+    def __init__(self,
+                 s3_connection,
+                 multipart_upload,
+                 bucket_name,
+                 ftp_file_path,
+                 s3_file_path,
+                 file_size):
+        self.s3_connection = s3_connection
+        self.multipart_upload = multipart_upload
+        self.bucket_name = bucket_name
+        self.ftp_file_path = ftp_file_path
+        self.s3_file_path = s3_file_path
+        self.part_number = 0
+        self.parts = []
+        self.buffer = bytes()
+        self.file_size = file_size
+        self.progress = 0
+
+    def cback(self, chunk):
+        self.buffer += chunk
+	# make sure s3 uploaded chunks are bigger than 5MB
+        if(len(self.buffer) > 5242880):
+            self.part_number += 1
+            part = self.s3_connection.upload_part(
+                    Bucket = self.bucket_name,
+                    Key = self.s3_file_path,
+                    PartNumber = self.part_number,
+                    UploadId = self.multipart_upload['UploadId'],
+                    Body = self.buffer,
+            )
+            part_output = {
+                    'PartNumber': self.part_number,
+                    'ETag': part['ETag']
+            }
+            self.parts.append(part_output)
+            self.progress += len(self.buffer)
+            pct_done = self.progress / self.file_size * 100
+            print('{:.2f}% Transfering chunk: {}'.format(
+                pct_done, self.part_number), end='\r')
+            self.buffer = bytes()
+        #print('Chunk {} Transferred Successfully!'.format(self.part_number))
+    
+    def finalize(self):
+        self.part_number += 1
+        part = self.s3_connection.upload_part(
+                Bucket = self.bucket_name,
+                Key = self.s3_file_path,
+                PartNumber = self.part_number,
+                UploadId = self.multipart_upload['UploadId'],
+                Body = self.buffer,
+        )
+        part_output = {
+                'PartNumber': self.part_number,
+                'ETag': part['ETag']
+        }
+        self.parts.append(part_output)
+        self.buffer = bytes()
 
 
 def get_s3(

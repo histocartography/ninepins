@@ -10,35 +10,9 @@ from histocartography.io.utils import get_s3
 from histocartography.io.utils import download_file_to_local
 
 
-class CoreTestCase(unittest.TestCase):
+class CoreTestBase():
     """CoreTestCase class."""
 
-    def setUp(self):
-        """Setting up test."""
-        warnings.simplefilter("ignore", ResourceWarning)
-        os.makedirs("tmp", exist_ok=True)
-        os.makedirs("tmp/patches", exist_ok=True)
-        self.s3_resource = get_s3()
-        self.filename = download_file_to_local(
-            s3=self.s3_resource,
-            bucket_name='datasets',
-            s3file='prostate/biopsy_data_all/77/77.tif',
-            local_name='tmp/00_biopsy.tif'
-        )
-
-        self.annotation_file = download_file_to_local(
-            s3=self.s3_resource,
-            bucket_name='datasets',
-            s3file='prostate/biopsy_data_all/77/77.xml',
-            local_name='tmp/01_biopsy.xml'
-        )
-        annotations = XMLAnnotation(
-            self.annotation_file,
-            ['background', 'NROI', '3+3', '3+4', '4+3', '4+4', '4+5', '5+5']
-        )
-
-        self.wsi = WSI(self.filename, annotations)
-        #self.wsi = WSI('/Users/fra/Downloads/tumor_105.tif', annotations, minimum_tissue_content=-100)
     def test_image_at(self):
         """Test image_at."""
         self.wsi.image_at(1)
@@ -60,7 +34,7 @@ class CoreTestCase(unittest.TestCase):
         )
         num_patches = 0
         for patch in patch_generator:
-            loc_x, loc_y, full_x, full_y, x_mag, y_mag, image, labels = patch
+            loc_x, loc_y, mag, image, labels = list(patch.values())
             if np.max(labels) > 0:
                 labels = np.uint8(labels * 255 / np.max(labels))
 
@@ -69,6 +43,9 @@ class CoreTestCase(unittest.TestCase):
             Image.fromarray(image).save(imagename)
             Image.fromarray(labels).save(labelname)
             num_patches += 1
+            #only generate first 10 patches
+            if num_patches > 10:
+                return 
 
         print("Total number of patches: {}".format(num_patches))
 
