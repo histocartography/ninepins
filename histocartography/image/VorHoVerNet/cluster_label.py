@@ -2,7 +2,7 @@ import numpy as np
 from skimage.morphology import *
 from scipy.ndimage.morphology import binary_fill_holes
 from sklearn.cluster import KMeans
-from utils import cascade_funcs, booleanize_point_labels, get_point_from_instance
+from utils import Cascade, booleanize_point_labels, get_point_from_instance
 from performance import OutTime
 
 def concat_normalize(*features):
@@ -55,10 +55,11 @@ def refine_cluster(nuclei, background, cells, point_mask):
     refined_nuclei = np.zeros(nuclei.shape, dtype=bool)
 
     max_cell_index = cells.max()
+    refinement = Cascade().append(binary_dilation, disk(5))\
+                         .append(binary_fill_holes)\
+                         .append(binary_erosion, disk(7))
     for i in range(1, max_cell_index + 1):
-        cell_nuclei = nuclei & (cells == i)
-        cell_nuclei = cascade_funcs(cell_nuclei, binary_dilation, binary_fill_holes, binary_erosion, arg_lists=[[disk(5)], [], [disk(7)]])
-        refined_nuclei = refined_nuclei | cell_nuclei
+        refined_nuclei = refined_nuclei | refinement(nuclei & (cells == i))
 
     # refine background
 

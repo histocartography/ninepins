@@ -1,27 +1,33 @@
 import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
-from collections.abc import Mapping, Iterable
+from collections.abc import Mapping, Iterable, Callable
 
-def cascade_funcs(x, *funcs, arg_lists=[], kwarg_lists=[]):
+class Cascade:
     """
-    Make @x go through list of functions.
+    Used to create a sequential function.
     Useful when conducting morphological operations.
-    @x: input to go through the functions.
-    @funcs: list of functions. List[Callable]
-    @arg_lists: args of each function. Iterable[Iterable]
-    @kwarg_lists: kwargs of each function. Iterable[Mapping]
     """
-    assert isinstance(arg_lists, Iterable), "{} is not iterable".format(arg_lists)
-    assert isinstance(kwarg_lists, Iterable), "{} is not iterable".format(kwarg_lists)
-    if len(arg_lists) < len(funcs):
-        arg_lists += [tuple()] * (len(funcs) - len(arg_lists))
-    if len(kwarg_lists) < len(funcs):
-        kwarg_lists += [dict()] * (len(funcs) - len(kwarg_lists))
-    for func, args, kwargs in zip(funcs, arg_lists, kwarg_lists):
-        assert isinstance(args, Iterable), "{} is not iterable".format(args)
-        assert isinstance(kwargs, Mapping), "{} is not a mapping".format(kwargs)
-        x = func(x, *args, **kwargs)
-    return x
+    def __init__(self):
+        self.funcs = []
+
+    def append(self, func, *args, **kwargs):
+        """
+        Append a function with arguments (additional to first argument).
+        If @func is a string, call a method of the input instead of calling @func with the input as its first argument.
+        """
+        self.funcs.append((func, args, kwargs))
+        return self
+
+    def __call__(self, x):
+        """
+        Conduct sequence of functions on the input @x.
+        """
+        for func, args, kwargs in self.funcs:
+            if isinstance(func, str):
+                x = getattr(x, func)(*args, **kwargs)
+            elif isinstance(func, Callable):
+                x = func(x, *args, **kwargs)
+        return x
 
 def get_point_from_instance(inst, ignore_size=5):
     """
