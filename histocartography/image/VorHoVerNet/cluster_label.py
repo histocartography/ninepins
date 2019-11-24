@@ -1,8 +1,6 @@
 import numpy as np
-# import matplotlib.pyplot as plt
-# from skimage.color import rgb2hed
-# from skimage.measure import find_contours
-from skimage.morphology import closing, opening, binary_dilation, disk
+from skimage.morphology import *
+from scipy.ndimage.morphology import binary_fill_holes
 from sklearn.cluster import KMeans
 from utils import cascade_funcs, booleanize_point_labels, get_point_from_instance
 from performance import OutTime
@@ -45,20 +43,38 @@ def get_clusters(image, distance_map):
     features = concat_normalize((image, 10), (distance_map, 1))
     KM = KMeans(n_clusters=3, random_state=0)
     clstrs = KM.fit_predict(features.reshape(-1, features.shape[2])).reshape(image.shape[:2])
-    # nclr = np.where(clstrs == nclr_clstr_idx, 255, 0)
-    # bkgrd = np.where(clstrs == bkgrd_clstr_idx, 255, 0)
-    # clstrs[pt_lbls > 0] = 128
-    # nclr = cascade_func(nclr, opening, closing)
-    # contours = find_contours(clstrs, 0.5)
-    
-    # for c in contours:
-    #     for pt in c:
-    #         y, x = map(int, pt)
-    #         image[y, x] = [0, 255, 0]
-
-    # imsave("cluster.png", (clstrs).astype(np.uint8))
-    # imsave("testtestst.png", image)
     return clstrs
+
+def refine_cluster(nuclei, background, cells, point_mask):
+    """
+    """
+    # refine nuclei
+
+    nuclei = remove_small_objects(nuclei, 30)
+    cells = dilation(cells, disk(2))
+    refined_nuclei = np.zeros(nuclei.shape, dtype=bool)
+
+    max_cell_index = cells.max()
+    for i in range(1, max_cell_index + 1):
+        cell_nuclei = nuclei & (cells == i)
+        cell_nuclei = cascade_funcs(cell_nuclei, binary_dilation, binary_fill_holes, binary_erosion, arg_lists=[[disk(5)], [], [disk(7)]])
+        refined_nuclei = refined_nuclei | cell_nuclei
+
+    # refine background
+
+    refined_background = background & (~refined_nuclei) & (~binary_dilation(point_mask, disk(10)))
+
+    res = np.zeros(nuclei.shape + (3,), dtype=np.uint8)
+
+    res[refined_nuclei] = [0, 255, 0]
+    res[refined_background] = [255, 0, 0]
+
+    return res
+
+def get_cluster_label(image, distance_map, point_mask, cells):
+    clusters = get_clusters(image, distance_map)
+    nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
+    return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask)
 
 def main():
     from dataset_reader import CoNSeP
@@ -70,11 +86,26 @@ def main():
     lab, _ = dataset.read_labels(IDX, SPLIT)
     point_labels = get_point_from_instance(lab)
     point_mask = booleanize_point_labels(point_labels)
-    _, distance_map = get_voronoi_edges(point_mask)
+
+    out_dict = {}
+
+    get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        clstrs = get_clusters(image, distance_map)
-        nclr_clstr_idx, bkgrd_clstr_idx = find_nuclear_cluster(clstrs, point_mask)
+        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"])
+
+    import matplotlib.pyplot as plt
+
+    nuclei = np.where((color_based_label == [0, 255, 0]).all(axis=2), 255, 0)
+    gx, gy = np.gradient(nuclei)
+    gradient = (gx**2 + gy**2)**(0.5)
+    
+    image[gradient > 0] = [0, 255, 0]
+
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(image)
+    ax[1].imshow(color_based_label)
+    plt.show()
 
 if __name__ == "__main__":
     main()

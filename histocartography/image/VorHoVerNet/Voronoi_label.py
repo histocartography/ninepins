@@ -2,10 +2,12 @@ import numpy as np
 from utils import get_point_from_instance, booleanize_point_labels
 from performance import OutTime
 
-def get_voronoi_edges(point_mask, view=False):
+def get_voronoi_edges(point_mask, view=False, extra_out=None):
     '''
     Compute Voronoi edges from point mask.
     @point_mask: point mask. (True at nuclear point, False at background)
+    @view: whether to display output in plot window.
+    @extra_out: dictionary to store additional output. (must be a dictionary.)
     @Return: voronoi edges (255 indicates edge, 0 indicates background), distance map
     Note: 'point' means one pixel per point.
     Reference: some codes from https://gist.github.com/bert/1188638
@@ -42,7 +44,12 @@ def get_voronoi_edges(point_mask, view=False):
         ax[1].imshow(edges)
         plt.show()
 
-    return edges, depth_map
+    if extra_out is not None:
+        assert isinstance(extra_out, dict), "{} is not a dictionary.".format(extra_out)
+        extra_out["dist_map"] = depth_map
+        extra_out["Voronoi_cell"] = color_map
+
+    return edges
 
 def main():
     from dataset_reader import CoNSeP
