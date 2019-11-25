@@ -2,8 +2,21 @@ import numpy as np
 from skimage.morphology import *
 from scipy.ndimage.morphology import binary_fill_holes
 from sklearn.cluster import KMeans
-from utils import Cascade, booleanize_point_labels, get_point_from_instance
+from utils import Cascade, booleanize_point_labels, get_point_from_instance, get_gradient
 from performance import OutTime
+
+def get_cluster_label(image, distance_map, point_mask, cells, edges):
+    """
+    Compute color-based label from original image, distance map, and point mask.
+    @image: original image.
+    @distance_map: distance map.
+    @point_mask: point mask. (True at nuclear point, False at background)
+    @cells: cells mask. (np.ndarray<bool>)
+    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
+    """
+    clusters = get_clusters(image, distance_map)
+    nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
+    return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
 def concat_normalize(*features):
     """
@@ -45,21 +58,25 @@ def get_clusters(image, distance_map):
     clstrs = KM.fit_predict(features.reshape(-1, features.shape[2])).reshape(image.shape[:2])
     return clstrs
 
-def refine_cluster(nuclei, background, cells, point_mask):
+def refine_cluster(nuclei, background, cells, point_mask, edges):
     """
+    Refine clustering result with information from Voronoi diagram.
+    @nuclei: nuclei mask. (np.ndarray<bool>)
+    @background: background mask. (np.ndarray<bool>)
+    @cells: cell indices. (integer indicates the cell index)
+    @point_mask: point mask. (True at nuclear point, False at background)
+    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
     """
     # refine nuclei
 
     nuclei = remove_small_objects(nuclei, 30)
-    cells = dilation(cells, disk(2))
-    refined_nuclei = np.zeros(nuclei.shape, dtype=bool)
-
-    max_cell_index = cells.max()
-    refinement = Cascade().append(binary_dilation, disk(5))\
+    refinement = Cascade().append(binary_dilation, disk(3))\
                          .append(binary_fill_holes)\
-                         .append(binary_erosion, disk(7))
-    for i in range(1, max_cell_index + 1):
-        refined_nuclei = refined_nuclei | refinement(nuclei & (cells == i))
+                         .append(binary_erosion, disk(3))\
+                         .append("__and__", edges == 0)\
+                         .append(binary_erosion, disk(2))
+
+    refined_nuclei = refinement(nuclei)
 
     # refine background
 
@@ -72,16 +89,13 @@ def refine_cluster(nuclei, background, cells, point_mask):
 
     return res
 
-def get_cluster_label(image, distance_map, point_mask, cells):
-    clusters = get_clusters(image, distance_map)
-    nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
-    return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask)
-
 def main():
     from dataset_reader import CoNSeP
     from Voronoi_label import get_voronoi_edges
     IDX = 4
     SPLIT = 'test'
+    EXP_NAME = 'onepass'
+
     dataset = CoNSeP()
     image = dataset.read_image(IDX, SPLIT)
     lab, _ = dataset.read_labels(IDX, SPLIT)
@@ -90,23 +104,27 @@ def main():
 
     out_dict = {}
 
-    get_voronoi_edges(point_mask, extra_out=out_dict)
+    edges = get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"])
+        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
 
     import matplotlib.pyplot as plt
 
     nuclei = np.where((color_based_label == [0, 255, 0]).all(axis=2), 255, 0)
-    gx, gy = np.gradient(nuclei)
-    gradient = (gx**2 + gy**2)**(0.5)
+    gradient = get_gradient(nuclei)
     
     image[gradient > 0] = [0, 255, 0]
 
-    fig, ax = plt.subplots(1, 2)
-    ax[0].imshow(image)
-    ax[1].imshow(color_based_label)
-    plt.show()
+    # fig, ax = plt.subplots(1, 2)
+    # ax[0].imshow(image)
+    # ax[1].imshow(color_based_label)
+    # plt.show()
+    
+    from skimage.io import imsave
+
+    imsave("img{}.png".format(EXP_NAME), image)
+    imsave("cl{}.png".format(EXP_NAME), color_based_label)
 
 if __name__ == "__main__":
     main()

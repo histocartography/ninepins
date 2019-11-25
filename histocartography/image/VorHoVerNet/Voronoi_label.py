@@ -8,7 +8,7 @@ def get_voronoi_edges(point_mask, view=False, extra_out=None):
     @point_mask: point mask. (True at nuclear point, False at background)
     @view: whether to display output in plot window.
     @extra_out: dictionary to store additional output. (must be a dictionary.)
-    @Return: voronoi edges (255 indicates edge, 0 indicates background), distance map
+    @Return: voronoi edges. (255 indicates edge, 0 indicates background)
     Note: 'point' means one pixel per point.
     Reference: some codes from https://gist.github.com/bert/1188638
     '''

@@ -96,3 +96,8 @@ def normalize_image(image):
     M, m = image.max(), image.min()
     image = (image - m) / (M - m)
     return image
+
+def get_gradient(image):
+    gx, gy = np.gradient(image)
+    gradient = (gx**2 + gy**2)**(0.5)
+    return gradient
