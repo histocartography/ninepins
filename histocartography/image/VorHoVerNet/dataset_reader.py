@@ -48,7 +48,7 @@ class CoNSeP:
         for d in obj.stream():
             buffer.write(d)
 
-        img = Image.open(buffer)
+        img = Image.open(buffer).convert("RGB")
         return np.array(img)
 
     def convert_labels(self, obj):

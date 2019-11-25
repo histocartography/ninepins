@@ -1,10 +1,12 @@
+from collections import deque
 import numpy as np
-from skimage.morphology import *
-from skimage.color import rgb2hed
 from scipy.ndimage.morphology import binary_fill_holes
+from skimage.color import rgb2hed
+from skimage.morphology import *
 from sklearn.cluster import KMeans
-from utils import Cascade, booleanize_point_labels, get_point_from_instance, get_gradient
 from performance import OutTime
+from utils import (Cascade, booleanize_point_labels, get_gradient,
+                   get_point_from_instance)
 
 CLUSTER_FEATURES = "CD" # C: rgb, D: distance, S: he
 
@@ -21,11 +23,31 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
+def get_neighbors(coord, h, w):
+    y, x = coord
+    return ((j, i) for i in range(x-1, x+2) for j in range(y-1, y+2) if 0 <= i < w and 0 <= j < h)
+
 def get_region_label(image, distance_map, point_mask, cells, edges):
     """
     TODO: run regoin growing on point mask while using edges as constraints.
     """
-    pass
+    threshold = 17
+
+    res = np.zeros_like(image)
+
+    points = np.argwhere(point_mask)
+    Q = deque(points)
+    features = get_features(image, distance_map)
+    features[edges == 255] = 0
+    h, w = features.shape[:2]
+    while Q:
+        coord = tuple(Q.popleft())
+        res[coord] = [0, 255, 0]
+        for n in get_neighbors(coord, h, w):
+            if ((features[coord] - features[n])**2).sum() < threshold and not ((res[n] == [0, 255, 0]).all()):
+                Q.append(n)
+
+    return res
 
 def concat_normalize(*features):
     """
@@ -45,6 +67,7 @@ def find_nuclear_cluster(clstrs, point_mask):
     Find the cluster with maximum overlaps with point labels.
     @clstrs: clusters. (integer indicates the cluster index)
     @point_mask: point mask. (True at nuclear point, False at background)
+    @Return: nuclear cluster index, background cluster index.
     """
     overlaps = [np.count_nonzero(point_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
     nclr_clstr_idx = np.argmax(overlaps)
@@ -54,12 +77,12 @@ def find_nuclear_cluster(clstrs, point_mask):
     assert nclr_clstr_idx != bkgrd_clstr_idx, "Image is invalid"
     return nclr_clstr_idx, bkgrd_clstr_idx
 
-def get_clusters(image, distance_map):
+def get_features(image, distance_map):
     """
-    Compute clusters from original image and distance map.
+    Compute features from original image and distance map.
     @image: original image.
     @distance_map: distance map.
-    @Return: cluster map, nuclear cluster index, background index
+    @Return: feature maps.
     """
     features = []
     for cluster_feature in CLUSTER_FEATURES:
@@ -70,6 +93,16 @@ def get_clusters(image, distance_map):
         if cluster_feature == 'S':
             features.append((rgb2hed(image)[..., :2], 1))
     features = concat_normalize(*features)
+    return features
+
+def get_clusters(image, distance_map):
+    """
+    Compute clusters from original image and distance map.
+    @image: original image.
+    @distance_map: distance map.
+    @Return: cluster map.
+    """
+    features = get_features(image, distance_map)
     KM = KMeans(n_clusters=3, random_state=0)
     clstrs = KM.fit_predict(features.reshape(-1, features.shape[2])).reshape(image.shape[:2])
     return clstrs
