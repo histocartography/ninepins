@@ -2,17 +2,16 @@ from utils import booleanize_point_labels, get_point_from_instance
 from color_label import get_cluster_label
 from Voronoi_label import get_voronoi_edges
 
-def gen_pseudo_label(image, instance_label):
+def gen_pseudo_label(image, point_mask):
     """
     Generate pseudo label from image and instance label.
     1. Generate distance based label.
     2. Generate color based label.
     3. Combine these two labels.
     @image: image.
-    @instance_label: instance label.
+    @point_mask: point mask. (True at nuclear point, False at background)
     @Return: pseudo label.
     """
-    point_mask = booleanize_point_labels(get_point_from_instance(instance_label))
 
     out_dict = {}
 

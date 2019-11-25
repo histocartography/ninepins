@@ -133,11 +133,12 @@ def main():
     SPLIT = args.split
     EXP_NAME = args.name
 
-    dataset = CoNSeP()
+    dataset = CoNSeP(download=True)
     image = dataset.read_image(IDX, SPLIT)
-    lab, _ = dataset.read_labels(IDX, SPLIT)
-    point_labels = get_point_from_instance(lab)
-    point_mask = booleanize_point_labels(point_labels)
+    # lab, _ = dataset.read_labels(IDX, SPLIT)
+    # point_labels = get_point_from_instance(lab)
+    # point_mask = booleanize_point_labels(point_labels)
+    point_mask = dataset.read_points(IDX, SPLIT)
 
     out_dict = {}
 
