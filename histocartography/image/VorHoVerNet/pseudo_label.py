@@ -1,5 +1,5 @@
 from utils import booleanize_point_labels, get_point_from_instance
-from cluster_label import get_cluster_label
+from color_label import get_cluster_label
 from Voronoi_label import get_voronoi_edges
 
 def gen_pseudo_label(image, instance_label):
