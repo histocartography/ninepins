@@ -1,9 +1,12 @@
 import numpy as np
 from skimage.morphology import *
+from skimage.color import rgb2hed
 from scipy.ndimage.morphology import binary_fill_holes
 from sklearn.cluster import KMeans
 from utils import Cascade, booleanize_point_labels, get_point_from_instance, get_gradient
 from performance import OutTime
+
+CLUSTER_FEATURES = "CD" # C: rgb, D: distance, S: he
 
 def get_cluster_label(image, distance_map, point_mask, cells, edges):
     """
@@ -17,6 +20,12 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     clusters = get_clusters(image, distance_map)
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
+
+def get_region_label(image, distance_map, point_mask, cells, edges):
+    """
+    TODO: run regoin growing on point mask while using edges as constraints.
+    """
+    pass
 
 def concat_normalize(*features):
     """
@@ -52,8 +61,15 @@ def get_clusters(image, distance_map):
     @distance_map: distance map.
     @Return: cluster map, nuclear cluster index, background index
     """
-    distance_map = np.clip(distance_map, a_min=0, a_max=20)
-    features = concat_normalize((image, 10), (distance_map, 1))
+    features = []
+    for cluster_feature in CLUSTER_FEATURES:
+        if cluster_feature == 'C':
+            features.append((image, 10))
+        if cluster_feature == 'D':
+            features.append((np.clip(distance_map, a_min=0, a_max=20), 1))
+        if cluster_feature == 'S':
+            features.append((rgb2hed(image)[..., :2], 1))
+    features = concat_normalize(*features)
     KM = KMeans(n_clusters=3, random_state=0)
     clstrs = KM.fit_predict(features.reshape(-1, features.shape[2])).reshape(image.shape[:2])
     return clstrs
@@ -69,14 +85,14 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     """
     # refine nuclei
 
-    nuclei = remove_small_objects(nuclei, 30)
-    refinement = Cascade().append(binary_dilation, disk(3))\
-                         .append(binary_fill_holes)\
-                         .append(binary_erosion, disk(3))\
-                         .append("__and__", edges == 0)\
-                         .append(binary_erosion, disk(2))
-
-    refined_nuclei = refinement(nuclei)
+    refined_nuclei = Cascade()\
+                        .append(remove_small_objects, 30)\
+                        .append(binary_dilation, disk(3))\
+                        .append(binary_fill_holes)\
+                        .append(binary_erosion, disk(3))\
+                        .append("__and__", edges == 0)\
+                        .append(binary_erosion, disk(2))\
+                        (nuclei)
 
     # refine background
 
@@ -92,9 +108,30 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
 def main():
     from dataset_reader import CoNSeP
     from Voronoi_label import get_voronoi_edges
-    IDX = 4
-    SPLIT = 'test'
-    EXP_NAME = 'onepass'
+    from argparse import ArgumentParser
+    import re
+
+    parser = ArgumentParser(description="Cluster Label Generator (Experiment)")
+    parser.add_argument("-f", "--features", default="CD",
+                        help="features for clustering (sequence of characters in [C, S, D])\
+                            C: RGB, D: distance, S: HE")
+    parser.add_argument("-n", "--name", default="test",
+                        help="experiment name")
+    parser.add_argument("-i", "--index", default=4, type=int,
+                        help="index of the image in dataset")
+    parser.add_argument("-s", "--split", default="test", choices=["test", "train"],
+                        help="split of the dataset ([test, train])")
+    parser.add_argument("-r", "--region-growing", default=False, action="store_true",
+                        help="use region growing instead of clustering")
+    args = parser.parse_args()
+
+    global CLUSTER_FEATURES
+    features = re.sub("[^CDS]", "", args.features)
+    CLUSTER_FEATURES = CLUSTER_FEATURES if features == "" else features
+
+    IDX = args.index
+    SPLIT = args.split
+    EXP_NAME = args.name
 
     dataset = CoNSeP()
     image = dataset.read_image(IDX, SPLIT)
@@ -107,7 +144,10 @@ def main():
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
+        if args.region_growing:
+            color_based_label = get_region_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
+        else:
+            color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
 
     import matplotlib.pyplot as plt
 
