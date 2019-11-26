@@ -7,7 +7,7 @@ from minio.error import ResponseError
 from PIL import Image
 from skimage.io import imread, imsave
 from constants import DATASET_IDX_LIMITS
-from utils import get_point_from_instance, booleanize_point_labels
+from utils import get_point_from_instance
 
 class CoNSeP:
     """
@@ -96,4 +96,4 @@ class CoNSeP:
             return point_mask
         else:
             label = np.load(self.get_path(idx, split, "label"))
-            return booleanize_point_labels(get_point_from_instance(label[..., 0]))
+            return get_point_from_instance(label[..., 0], binary=True)

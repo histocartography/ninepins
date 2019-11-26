@@ -29,18 +29,24 @@ class Cascade:
                 x = func(x, *args, **kwargs)
         return x
 
-def get_point_from_instance(inst, ignore_size=5):
+def get_point_from_instance(inst, ignore_size=5, binary=False):
     """
     @inst: instance map of nuclei. (integers larger than 0 indicates the nuclei instance)
+    @ignore_size: minimum size of a nuclei
     @Return: point map of nuclei. (integers larger than 0 indicates the nuclei instance)
     """
     max_inst_idx = int(inst.max())
     point_map = np.zeros_like(inst)
+    if binary:
+        point_map = point_map.astype(bool)
     for inst_idx in range(1, max_inst_idx + 1):
         coords = np.argwhere(inst == inst_idx)
         if coords.shape[0] <= ignore_size:
             continue
-        point_map[get_center(coords)] = inst_idx
+        if binary:
+            point_map[get_center(coords)] = True
+        else:
+            point_map[get_center(coords)] = inst_idx
     return point_map
 
 def booleanize_point_labels(pt_lbls):
@@ -98,6 +104,20 @@ def normalize_image(image):
     return image
 
 def get_gradient(image):
+    """
+    TBD
+    """
     gx, gy = np.gradient(image)
     gradient = (gx**2 + gy**2)**(0.5)
     return gradient
+
+def draw_boundaries(image, mask, color=[0, 255, 0]):
+    if isinstance(color, (int, float)):
+        assert 0 <= color <= 255, "Invalid color."
+    elif isinstance(color, (list, tuple)):
+        assert len(color) == 3 or len(color) == 1, "Invalid color length."
+        for c in color:
+            assert 0 <= c <= 255, "Invalid color."
+    mask = np.where(mask, 255, 0)
+    gradient = get_gradient(mask)
+    image[gradient > 0] = color

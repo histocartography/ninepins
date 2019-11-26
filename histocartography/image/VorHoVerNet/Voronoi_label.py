@@ -1,5 +1,4 @@
 import numpy as np
-from utils import get_point_from_instance, booleanize_point_labels
 from performance import OutTime
 
 def get_voronoi_edges(point_mask, view=False, extra_out=None):
@@ -57,10 +56,9 @@ def main():
     SPLIT = 'train'
     dataset = CoNSeP()
     ori = dataset.read_image(IDX, SPLIT)
-    lab, _ = dataset.read_labels(IDX, SPLIT)
-
+    
     with OutTime():
-        mass_map = booleanize_point_labels(get_point_from_instance(lab, ignore_size=6))
+        mass_map = dataset.read_points(IDX, SPLIT)
     
     with OutTime():
         get_voronoi_edges(mass_map, view=True)

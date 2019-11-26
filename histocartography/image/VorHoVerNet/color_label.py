@@ -5,8 +5,7 @@ from skimage.color import rgb2hed
 from skimage.morphology import *
 from sklearn.cluster import KMeans
 from performance import OutTime
-from utils import (Cascade, booleanize_point_labels, get_gradient,
-                   get_point_from_instance)
+from utils import Cascade, draw_boundaries, get_point_from_instance
 
 CLUSTER_FEATURES = "CD" # C: rgb, D: distance, S: he
 
@@ -169,8 +168,7 @@ def main():
     dataset = CoNSeP(download=True)
     image = dataset.read_image(IDX, SPLIT)
     # lab, _ = dataset.read_labels(IDX, SPLIT)
-    # point_labels = get_point_from_instance(lab)
-    # point_mask = booleanize_point_labels(point_labels)
+    # point_mask = get_point_from_instance(lab, binary=True)
     point_mask = dataset.read_points(IDX, SPLIT)
 
     out_dict = {}
@@ -185,10 +183,8 @@ def main():
 
     import matplotlib.pyplot as plt
 
-    nuclei = np.where((color_based_label == [0, 255, 0]).all(axis=2), 255, 0)
-    gradient = get_gradient(nuclei)
-    
-    image[gradient > 0] = [0, 255, 0]
+    mask = (color_based_label == [0, 255, 0]).all(axis=2)
+    draw_boundaries(image, mask)
 
     # fig, ax = plt.subplots(1, 2)
     # ax[0].imshow(image)
