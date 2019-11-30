@@ -22,31 +22,21 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
-def get_neighbors(coord, h, w):
-    y, x = coord
-    return ((j, i) for i in range(x-1, x+2) for j in range(y-1, y+2) if 0 <= i < w and 0 <= j < h)
+# def get_neighbors(coord, h, w):
+#     y, x = coord
+#     return ((j, i) for i in range(x-1, x+2) for j in range(y-1, y+2) if 0 <= i < w and 0 <= j < h)
 
-def get_region_label(image, distance_map, point_mask, cells, edges):
+def get_cluster_label_v2(image, distance_map, point_mask, cells, edges):
     """
-    TODO: run regoin growing on point mask while using edges as constraints.
+    Compute color-based label from original image, distance map, and point mask.
+    For each image masked by dilated point mask.
+    @image: original image.
+    @distance_map: distance map.
+    @point_mask: point mask. (True at nuclear point, False at background)
+    @cells: cells mask. (np.ndarray<bool>)
+    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
     """
-    threshold = 17
-
-    res = np.zeros_like(image)
-
-    points = np.argwhere(point_mask)
-    Q = deque(points)
-    features = get_features(image, distance_map)
-    features[edges == 255] = 0
-    h, w = features.shape[:2]
-    while Q:
-        coord = tuple(Q.popleft())
-        res[coord] = [0, 255, 0]
-        for n in get_neighbors(coord, h, w):
-            if ((features[coord] - features[n])**2).sum() < threshold and not ((res[n] == [0, 255, 0]).all()):
-                Q.append(n)
-
-    return res
+    # TODO: implementation
 
 def concat_normalize(*features):
     """

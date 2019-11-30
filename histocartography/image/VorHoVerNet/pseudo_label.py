@@ -1,6 +1,9 @@
 from utils import get_point_from_instance, draw_boundaries
 from color_label import get_cluster_label
 from Voronoi_label import get_voronoi_edges
+from skimage.morphology import label, dilation, disk
+from performance import OutTime
+import numpy as np
 
 def gen_pseudo_label(image, point_mask):
     """
@@ -23,23 +26,21 @@ def gen_pseudo_label(image, point_mask):
     draw_boundaries(image, nuclei, color=[0, 255, 255])
 
     color_based_label[nuclei] = [0, 0, 0]
-    from skimage.morphology import watershed, label
-    import numpy as np
-    from utils import get_gradient
+    
     labeled_nuclei = label(nuclei)
+    labeled_point_mask = label(point_mask)
+    dilated_point_mask = dilation(labeled_point_mask, disk(5))
     mask = np.zeros_like(nuclei)
-    for point in np.argwhere(point_mask):
-        point = tuple(point)
-        if labeled_nuclei[point] == 0: continue
-        mask = mask | (labeled_nuclei == labeled_nuclei[point])
+    for point_index in np.unique(labeled_point_mask):
+        if point_index == 0: continue
+        overlapped_nuclei = np.unique(labeled_nuclei[dilated_point_mask == point_index])
+        for overlapped_nucleus in overlapped_nuclei:
+            if overlapped_nucleus == 0: continue
+            mask = mask | (labeled_nuclei == overlapped_nucleus)
 
     draw_boundaries(image, mask)
-    
-    from skimage.io import imsave
 
-    imsave("img.png", image)
-
-    return None
+    return image
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
@@ -49,12 +50,13 @@ if __name__ == "__main__":
     ori = dataset.read_image(IDX, SPLIT)
     point_mask = dataset.read_points(IDX, SPLIT)
     # point_mask = booleanize_point_labels(get_point_from_instance(dataset.read_labels(IDX, SPLIT)[0]))
-    from skimage.morphology import binary_dilation, disk
     from skimage.io import imsave
-    import numpy as np
+    from skimage.morphology import binary_dilation
 
-    gen_pseudo_label(ori, point_mask)
-    point_mask = binary_dilation(point_mask, disk(3))
+    with OutTime():
+        label = gen_pseudo_label(ori, point_mask)
+    point_mask = binary_dilation(point_mask, disk(5))
     point_mask = np.where(point_mask, 255, 0)
 
-    imsave("points.png", point_mask)
+    imsave("points.png", point_mask.astype(np.uint8))
+    imsave("img.png", label)

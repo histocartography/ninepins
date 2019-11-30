@@ -105,13 +105,22 @@ def normalize_image(image):
 
 def get_gradient(image):
     """
-    TBD
+    Compute the magnitude of gradient of the image.
+    @image: the image to compute gradient.
+    @Return: the gradient magnitude.
     """
     gx, gy = np.gradient(image)
     gradient = (gx**2 + gy**2)**(0.5)
     return gradient
 
 def draw_boundaries(image, mask, color=[0, 255, 0]):
+    """
+    Draw boundaries of mask with given color on image.
+    @image: the image to draw.
+    @mask: the mask.
+    @color: the color used to indicate the boundaries.
+    @Return: <None>
+    """
     if isinstance(color, (int, float)):
         assert 0 <= color <= 255, "Invalid color."
     elif isinstance(color, (list, tuple)):
