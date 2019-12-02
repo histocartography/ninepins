@@ -1,4 +1,4 @@
-from collections import deque
+import multiprocessing as mp
 import numpy as np
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage.color import rgb2hed
@@ -22,21 +22,54 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
-# def get_neighbors(coord, h, w):
-#     y, x = coord
-#     return ((j, i) for i in range(x-1, x+2) for j in range(y-1, y+2) if 0 <= i < w and 0 <= j < h)
-
-def get_cluster_label_v2(image, distance_map, point_mask, cells, edges):
+def get_cluster_label_v2(image, distance_map, point_mask, cells, edges, typed_point_map):
     """
     Compute color-based label from original image, distance map, and point mask.
-    For each image masked by dilated point mask.
+    For each image masked by dilated point mask do clustering.
     @image: original image.
     @distance_map: distance map.
     @point_mask: point mask. (True at nuclear point, False at background)
     @cells: cells mask. (np.ndarray<bool>)
     @edges: voronoi edges. (255 indicates edge, 0 indicates background)
     """
-    # TODO: implementation
+    circle_mask = distance_map < 1000
+    types = np.unique(typed_point_map)
+    FULL = len(types) - 1
+    lock = mp.Lock()
+    queue = mp.Queue(FULL)
+
+    for type_ in types:
+        if type_ == 0: continue
+        cell_indices = cells[typed_point_map == type_]
+        mask = circle_mask & np.logical_or.reduce([cells == cell_index for cell_index in np.unique(cell_indices)])
+        p = mp.Process(target=_get_cluster_label_v2, args=(mask, image, distance_map, typed_point_map == type_, lock, queue))
+        p.daemon = True
+        p.start()
+
+    fnsd = 0
+    all_mask = np.zeros_like(point_mask)
+
+    while mp.active_children():
+        nuclear = queue.get()
+        all_mask = all_mask | nuclear
+        fnsd += 1
+        if fnsd == FULL:
+            break
+
+    return refine_cluster(all_mask, ~all_mask, cells, point_mask, edges)
+
+def _get_cluster_label_v2(mask, image, distance_map, type_points, lock, queue):
+    from skimage.io import imsave
+    mask3d = mask[..., None]
+    mask3d = np.repeat(mask3d, 3, axis=2)
+    masked_image = np.where(mask3d, image, 0)
+    masked_distance_map = np.where(mask, distance_map, -1)
+    clstrs = get_clusters(masked_image, masked_distance_map, k=4)
+    nuclear_index, _ = find_nuclear_cluster(clstrs, type_points)
+    nuclear = clstrs == nuclear_index
+    lock.acquire()
+    queue.put(nuclear)
+    lock.release()
 
 def concat_normalize(*features):
     """
@@ -84,7 +117,7 @@ def get_features(image, distance_map):
     features = concat_normalize(*features)
     return features
 
-def get_clusters(image, distance_map):
+def get_clusters(image, distance_map, k=3):
     """
     Compute clusters from original image and distance map.
     @image: original image.
@@ -92,7 +125,7 @@ def get_clusters(image, distance_map):
     @Return: cluster map.
     """
     features = get_features(image, distance_map)
-    KM = KMeans(n_clusters=3, random_state=0)
+    KM = KMeans(n_clusters=k, random_state=0)
     clstrs = KM.fit_predict(features.reshape(-1, features.shape[2])).reshape(image.shape[:2])
     return clstrs
 
@@ -108,7 +141,7 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     # refine nuclei
 
     refined_nuclei = Cascade()\
-                        .append(remove_small_objects, 30)\
+                        .append(remove_small_objects, 10)\
                         .append(binary_dilation, disk(3))\
                         .append(binary_fill_holes)\
                         .append(binary_erosion, disk(3))\
@@ -143,8 +176,8 @@ def main():
                         help="index of the image in dataset")
     parser.add_argument("-s", "--split", default="test", choices=["test", "train"],
                         help="split of the dataset ([test, train])")
-    parser.add_argument("-r", "--region-growing", default=False, action="store_true",
-                        help="use region growing instead of clustering")
+    parser.add_argument("-m", "--masked-clustering", default=False, action="store_true",
+                        help="use masked images to do clustering")
     args = parser.parse_args()
 
     global CLUSTER_FEATURES
@@ -155,19 +188,20 @@ def main():
     SPLIT = args.split
     EXP_NAME = args.name
 
-    dataset = CoNSeP(download=True)
+    dataset = CoNSeP(download=False)
     image = dataset.read_image(IDX, SPLIT)
-    # lab, _ = dataset.read_labels(IDX, SPLIT)
-    # point_mask = get_point_from_instance(lab, binary=True)
-    point_mask = dataset.read_points(IDX, SPLIT)
+    lab, type_ = dataset.read_labels(IDX, SPLIT)
+    point_mask = get_point_from_instance(lab, binary=True)
+    typed_point_map = np.where(point_mask, type_, 0)
+    # point_mask = dataset.read_points(IDX, SPLIT)
 
     out_dict = {}
 
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        if args.region_growing:
-            color_based_label = get_region_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
+        if args.masked_clustering:
+            color_based_label = get_cluster_label_v2(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, typed_point_map)
         else:
             color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
 
