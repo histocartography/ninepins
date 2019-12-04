@@ -26,7 +26,7 @@ def gen_pseudo_label(image, point_mask, typed_point_map, v2=False):
 
     nuclei = (color_based_label == [0, 255, 0]).all(axis=2)
 
-    draw_boundaries(image, nuclei, color=[0, 255, 255])
+    # draw_boundaries(image, nuclei, color=[0, 255, 255])
 
     color_based_label[nuclei] = [0, 0, 0]
     

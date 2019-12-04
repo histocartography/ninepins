@@ -5,7 +5,7 @@ from skimage.color import rgb2hed
 from skimage.morphology import *
 from sklearn.cluster import KMeans
 from performance import OutTime
-from utils import Cascade, draw_boundaries, get_point_from_instance
+from utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient
 
 CLUSTER_FEATURES = "CD" # C: rgb, D: distance, S: he
 
@@ -19,7 +19,9 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     @edges: voronoi edges. (255 indicates edge, 0 indicates background)
     """
     clusters = get_clusters(image, distance_map)
+    from skimage.io import imsave
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
+    imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
 def get_cluster_label_v2(image, distance_map, point_mask, cells, edges, typed_point_map):
@@ -59,7 +61,6 @@ def get_cluster_label_v2(image, distance_map, point_mask, cells, edges, typed_po
     return refine_cluster(all_mask, ~all_mask, cells, point_mask, edges)
 
 def _get_cluster_label_v2(mask, image, distance_map, type_points, lock, queue):
-    from skimage.io import imsave
     mask3d = mask[..., None]
     mask3d = np.repeat(mask3d, 3, axis=2)
     masked_image = np.where(mask3d, image, 0)
@@ -113,7 +114,9 @@ def get_features(image, distance_map):
         if cluster_feature == 'D':
             features.append((np.clip(distance_map, a_min=0, a_max=20), 1))
         if cluster_feature == 'S':
-            features.append((rgb2hed(image)[..., :2], 1))
+            feature = get_gradient(rgb2hed(image)[..., 0] * 255)
+            M, m = feature.max(), feature.min()
+            features.append((feature - m, (M - m) / 20))
     features = concat_normalize(*features)
     return features
 
@@ -138,18 +141,19 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     @point_mask: point mask. (True at nuclear point, False at background)
     @edges: voronoi edges. (255 indicates edge, 0 indicates background)
     """
-    # refine nuclei
+    """refine nuclei"""
 
-    refined_nuclei = Cascade()\
-                        .append(remove_small_objects, 10)\
+    refined_nuclei = Cascade(intermediate_prefix="test cases/cluster")\
+                        .append(remove_small_objects, 30)\
                         .append(binary_dilation, disk(3))\
                         .append(binary_fill_holes)\
                         .append(binary_erosion, disk(3))\
+                        .append("__or__", binary_dilation(point_mask, disk(10)))\
                         .append("__and__", edges == 0)\
                         .append(binary_erosion, disk(2))\
                         (nuclei)
 
-    # refine background
+    """refine background"""
 
     refined_background = background & (~refined_nuclei) & (~binary_dilation(point_mask, disk(10)))
 

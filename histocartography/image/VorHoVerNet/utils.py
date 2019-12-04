@@ -1,4 +1,5 @@
 import numpy as np
+from skimage.io import imsave
 from scipy.ndimage.morphology import distance_transform_edt
 from collections.abc import Mapping, Iterable, Callable
 
@@ -7,8 +8,10 @@ class Cascade:
     Used to create a sequential function.
     Useful when conducting morphological operations.
     """
-    def __init__(self):
+    def __init__(self, intermediate_prefix=None):
         self.funcs = []
+        self.save_intermediate = intermediate_prefix is not None
+        self.intermediate_prefix = intermediate_prefix
 
     def append(self, func, *args, **kwargs):
         """
@@ -22,12 +25,26 @@ class Cascade:
         """
         Conduct sequence of functions on the input @x.
         """
+        if self.save_intermediate:
+            i = 0
         for func, args, kwargs in self.funcs:
             if isinstance(func, str):
                 x = getattr(x, func)(*args, **kwargs)
             elif isinstance(func, Callable):
                 x = func(x, *args, **kwargs)
+            if self.save_intermediate:
+                try: 
+                    imsave("{}_{}.png".format(self.intermediate_prefix, i), image_to_save(x))
+                    i += 1
+                except Exception as e:
+                    print(str(e))
         return x
+
+def image_to_save(im):
+    if im.dtype == bool:
+        return np.where(im, 255, 0).astype("uint8")
+    else:
+        return im.astype("uint8")
 
 def get_point_from_instance(inst, ignore_size=5, binary=False):
     """

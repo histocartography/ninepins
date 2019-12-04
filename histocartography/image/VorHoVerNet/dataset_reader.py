@@ -48,7 +48,7 @@ class CoNSeP_local(CoNSeP_common):
 
     def read_image(self, idx, split):
         self.check_idx(idx, split)
-        return imread(self.get_path(idx, split, "image"))
+        return imread(self.get_path(idx, split, "image"))[..., :3]
 
     def read_labels(self, idx, split):
         self.check_idx(idx, split)
