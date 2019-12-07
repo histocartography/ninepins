@@ -41,9 +41,11 @@ def gen_pseudo_label(image, point_mask, typed_point_map, v2=False):
             if overlapped_nucleus == 0: continue
             mask = mask | (labeled_nuclei == overlapped_nucleus)
 
-    draw_boundaries(image, mask)
+    point_mask = binary_dilation(point_mask, disk(3))
 
-    return image
+    mask = mask | point_mask
+
+    return mask
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
@@ -75,9 +77,10 @@ if __name__ == "__main__":
 
     with OutTime():
         label = gen_pseudo_label(ori, point_mask, np.where(point_mask, type_, 0), v2=args.masked_clustering)
+        draw_boundaries(ori, label)
     point_mask = binary_dilation(point_mask, disk(3))
     # point_mask = np.where(point_mask, 255, 0)
-    label[point_mask] = [255, 255, 0]
+    ori[point_mask] = [255, 255, 0]
 
     # imsave("points.png", point_mask.astype(np.uint8))
-    imsave("pseudo_label{}.png".format(EXP_NAME), label)
+    imsave("pseudo_label{}.png".format(EXP_NAME), ori)
