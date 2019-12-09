@@ -149,10 +149,9 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
                         .append(binary_fill_holes)\
                         .append(binary_erosion, disk(3))\
                         .append("__or__", binary_dilation(point_mask, disk(10)))\
-                        .append("__and__", edges == 0)\
-                        .append(binary_erosion, disk(2))\
                         (nuclei)
-
+    # .append("__and__", edges == 0)\ 152
+#     .append(binary_erosion, disk(2))\
     """refine background"""
 
     refined_background = background & (~refined_nuclei) & (~binary_dilation(point_mask, disk(10)))

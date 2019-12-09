@@ -5,7 +5,7 @@ from skimage.morphology import label, dilation, disk, binary_dilation
 from performance import OutTime
 import numpy as np
 
-def gen_pseudo_label(image, point_mask, typed_point_map, v2=False):
+def gen_pseudo_label(image, point_mask, typed_point_map, v2=False, return_edge=False):
     """
     Generate pseudo label from image and instance label.
     1. Generate distance based label.
@@ -45,7 +45,7 @@ def gen_pseudo_label(image, point_mask, typed_point_map, v2=False):
 
     mask = mask | point_mask
 
-    return mask
+    return (mask, distance_based_label) if return_edge else mask
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
@@ -83,4 +83,3 @@ if __name__ == "__main__":
 
     # imsave("points.png", point_mask.astype(np.uint8))
     imsave("pseudo_label{}.png".format(EXP_NAME), ori)
-    
