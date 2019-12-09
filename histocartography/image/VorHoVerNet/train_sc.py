@@ -130,17 +130,39 @@ def main(args):
     ) # tracker_type='mlflow'
 
     # start training
+#     from pytorch_lightning.callbacks import ModelCheckpoint
+#     checkpoint_callback = ModelCheckpoint(
+#         filepath='./savers/',
+#         save_best_only=True,
+#         verbose=True,
+#         monitor='avg_val_loss',
+#         mode='min',
+#         prefix=''
+#     )
+    
+    from pytorch_lightning.callbacks import EarlyStopping
+    early_stop_callback = EarlyStopping(
+        monitor='avg_val_loss',
+        min_delta=0.00,
+        patience=3,
+        verbose=True,
+        mode='min'
+    )
+    
     if torch.cuda.is_available():
-        trainer = pl.Trainer(gpus=[0], max_nb_epochs=EPOCHS)
+        print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
+        trainer = pl.Trainer(accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
+                             max_nb_epochs=EPOCHS, early_stop_callback=early_stop_callback)
     else:
-        trainer = pl.Trainer(max_nb_epochs=EPOCHS)
+        trainer = pl.Trainer(max_nb_epochs=EPOCHS, checkpoint_callback=checkpoint_callback)
     trainer.fit(brontes_model)
 
     # save model
-    SAVER_PATH = 'models/'
+    SAVER_PATH = 'saver/'
     os.makedirs(SAVER_PATH, exist_ok=True)
-    saved_model = SAVER_PATH + MODEL_NAME + '.pt'
-    torch.save(brontes_model, saved_model)
+    saved_model = SAVER_PATH + MODEL_NAME + '_5.pt'
+#     torch.save(brontes_model.model, saved_model)
+    torch.save({'state_dict': brontes_model.state_dict()}, saved_model)
     # mlflow.log_artifact(save_model)
 
 if __name__ == "__main__":
