@@ -32,31 +32,57 @@ class CustomLoss(nn.Module):
         n = 2. * torch.sum(pred * gt)
         d = torch.sum(pred + gt)
         return 1. - (n + epsilon) / (d + epsilon)
+    
+    @staticmethod
+    def get_gradient(maps):
+        """
+        Reference: some codes from https://github.com/vqdang/hover_net/blob/master/src/model/graph.py
+        """
+        def get_sobel_kernel(size):
+            assert size % 2 == 1, 'Must be odd, get size={}'.format(size)
+
+            h_range = np.arange(-size//2 + 1, size//2 + 1, dtype=np.float32)
+            v_range = np.arange(-size//2 + 1, size//2 + 1, dtype=np.float32)
+            h, v = np.meshgrid(h_range, v_range)
+            kernel_h = h / (h * h + v * v + 1.0e-15)
+            kernel_v = v / (h * h + v * v + 1.0e-15)
+            return kernel_h, kernel_v 
         
+        batchsize_ = maps.shape[0]
+        hk, vk = get_sobel_kernel(5)
+        device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+        hk = torch.tensor(hk, requires_grad=False).view(1, 1, 5, 5).repeat(1, batchsize_, 1, 1).to(device)
+        vk = torch.tensor(vk, requires_grad=False).view(1, 1, 5, 5).repeat(1, batchsize_, 1, 1).to(device)
+
+        h = maps[..., 0].unsqueeze(0)
+        v = maps[..., 1].unsqueeze(0)
+
+        dh = F.conv2d(h, hk, padding=2).permute(0, 2, 3, 1)
+        dv = F.conv2d(v, vk, padding=2).permute(0, 2, 3, 1)
+        return torch.cat((dh, dv), axis=-1)
+
+    def msge_loss(self, pred, gt, focus):
+        focus = torch.cat((focus, focus), axis=-1)
+        pred_grad = self.get_gradient(pred)
+        gt_grad = self.get_gradient(gt)
+        return F.mse_loss(pred_grad, gt_grad)
+
     def forward(self, preds, gts, prefix=None, mode='single'):
-#         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         gts = gts.permute(0, 2, 3, 1)
         gt_seg = gts[..., 0]
-        gt_v = gts[..., 1]
-        gt_h = gts[..., 2]
+        gt_hv = gts[..., 1:3]
         pred_seg = preds[..., 0]
-        pred_v = preds[..., 1]
-        pred_h = preds[..., 2]
+        pred_hv = preds[..., 1:3]
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # dice loss
         dice = self.dice_loss(pred_seg, gt_seg)
         # mean square error of distance maps
-        mse = F.mse_loss(pred_v, gt_v) + F.mse_loss(pred_h, gt_h)
-        # mean square error of gradient of distance maps
-        pred_v_g = torch.from_numpy(np.gradient(pred_v.detach().cpu().numpy(), axis=0))
-        pred_h_g = torch.from_numpy(np.gradient(pred_h.detach().cpu().numpy(), axis=1))
-        gt_v_g = torch.from_numpy(np.gradient(gt_v.cpu().numpy(), axis=0))
-        gt_h_g = torch.from_numpy(np.gradient(gt_h.cpu().numpy(), axis=1))
-        mse_g = F.mse_loss(pred_v_g, gt_v_g) + F.mse_loss(pred_h_g, gt_h_g)
+        mse = F.mse_loss(pred_hv, gt_hv)
+        mse_g = self.msge_loss(pred_hv, gt_hv, gt_seg)
         
         loss = bce * self.weights[0] + dice * self.weights[1] + mse * self.weights[2] + mse_g * self.weights[3] 
-#         print(loss, bce, dice, mse, mse_g)
+
         if mode == 'single':
             return loss
         
@@ -85,7 +111,6 @@ class PreActResBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(m)
         self.conv3 = nn.Conv2d(m, m * self.multiplication_factor, kernel_size=ksize[2], bias=False)
         #self.bnlast = nn.BatchNorm2d(ch_in * self.multiplication_factor)
-
 
 #         self.convshortcut = nn.Sequential()
         if strides != 1 or ch_in != m * self.multiplication_factor:
@@ -246,17 +271,15 @@ class Net(nn.Module):
         seg_pred = F.relu(self.BatchNorm(seg_decodeds[-1]))
 
         logi_seg = self.conv_seg(seg_pred).permute(0, 2, 3, 1)
-#         logi_seg = logi_seg.permute(0, 2, 3, 1) # TODO(@hun: even shorter)
         soft_seg = self.softmax(logi_seg)
         pred_seg = soft_seg[..., 1]
-        pred_seg = torch.unsqueeze(pred_seg,-1)
+        pred_seg = torch.unsqueeze(pred_seg, -1)
 
         # HoVer Branch
         hov_decodeds = self.decoder_hov(encodeds)
         hov_pred = F.relu(self.BatchNorm(hov_decodeds[-1]))
 
         logi_hov = self.conv_hov(hov_pred).permute(0, 2, 3, 1)
-#         logi_hov = logi_hov.permute(0, 2, 3, 1)
         pred_hov = logi_hov # legacy of transfered from tensorflow, can be removed 
 
         predmap_coded = torch.cat((pred_seg, pred_hov), -1)
