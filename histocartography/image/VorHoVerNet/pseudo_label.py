@@ -1,7 +1,7 @@
 from utils import get_point_from_instance, draw_boundaries
 from color_label import get_cluster_label, get_cluster_label_v2
 from Voronoi_label import get_voronoi_edges
-from skimage.morphology import label, dilation, disk
+from skimage.morphology import label, dilation, disk, binary_dilation
 from performance import OutTime
 import numpy as np
 
@@ -73,7 +73,6 @@ if __name__ == "__main__":
     point_mask = get_point_from_instance(lab, binary=True)
 
     from skimage.io import imsave
-    from skimage.morphology import binary_dilation
 
     with OutTime():
         label = gen_pseudo_label(ori, point_mask, np.where(point_mask, type_, 0), v2=args.masked_clustering)
@@ -84,3 +83,4 @@ if __name__ == "__main__":
 
     # imsave("points.png", point_mask.astype(np.uint8))
     imsave("pseudo_label{}.png".format(EXP_NAME), ori)
+    
