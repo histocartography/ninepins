@@ -119,8 +119,3 @@ tmp/
 
 #dstore files
 .DS_Store
-histocartography/image/VorHoVerNet/model/hover_net.py
-histocartography/image/VorHoVerNet/opt.py
-histocartography/image/VorHoVerNet/config.py
-histocartography/image/VorHoVerNet/train_pl.py
-histocartography/image/VorHoVerNet/train.py
