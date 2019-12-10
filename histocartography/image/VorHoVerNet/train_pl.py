@@ -13,7 +13,8 @@ import pytorch_lightning as pl
 # from torch.utils.data import DataLoader
 # from torch.utils.data.dataset import random_split
 from dataset import CoNSeP_cropped, data_reader
-from brontes import Brontes
+# from brontes import Brontes
+from pl_net import plNet
 from model.vorhover_net import Net, CustomLoss
 
 # parse parameters
@@ -38,6 +39,14 @@ parser.add_argument('--lr', type=float, default=1e-4, metavar='LR',
                     help='learning rate (default: {})'.format(1e-4))
 parser.add_argument('--log_interval', type=int, default=10, metavar='N', 
                     help='how many batches to wait before logging training status')
+parser.add_argument('--early_stop_patience', type=int, default=5, metavar='N', 
+                    help='how many times to wait before early stop (default: 5)')
+parser.add_argument('--early_stop_monitor', type=str, default='val_loss', metavar='N', 
+                    help='criterion monitor for early stopping (default: val_loss)')
+parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
+                    help='save results of inference (default: True)')
+# parser.add_argument('--vdir', type=str, default='train', 
+#                     help='dir name of visualization images')
 
 def main(args):
     """
@@ -55,6 +64,9 @@ def main(args):
     EPOCHS = args.epochs
     LEARNING_RATE = args.lr
     LOG_INTERVAL = args.log_interval
+    EARLY_STOP_PATIENCE = args.early_stop_patience
+    EARLY_STOP_MONITOR = args.early_stop_monitor
+    INFERENCE_MODE = args.inference_mode
 
     # make sure data folder exists
     os.makedirs(DATA_PATH, exist_ok=True)
@@ -108,7 +120,7 @@ def main(args):
     
     # define model and optimizer
     model = Net(batch_size=BATCH_SIZE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+#     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # mlflow set a tag
     # mlflow.set_tag('label_folder', label_folder)
@@ -121,49 +133,57 @@ def main(args):
     # })
 
     # set brontes
-    brontes_model = Brontes(
-        model=model,
+    plmodel = plNet(
+        model=Net,
         loss=CustomLoss(),
         data_loaders=dataset_loaders,
-        optimizers=optimizer, 
-        training_log_interval=LOG_INTERVAL
-    ) # tracker_type='mlflow'
-
+        lr=LEARNING_RATE,
+        visualize=INFERENCE_MODE,
+        vdir=MODEL_NAME
+    )
+    
     # start training
-#     from pytorch_lightning.callbacks import ModelCheckpoint
-#     checkpoint_callback = ModelCheckpoint(
-#         filepath='./savers/',
-#         save_best_only=True,
-#         verbose=True,
-#         monitor='avg_val_loss',
-#         mode='min',
-#         prefix=''
-#     )
+    from pytorch_lightning.callbacks import ModelCheckpoint
+    checkpoint_callback = ModelCheckpoint(
+        filepath='./savers_pl/{}'.format(MODEL_NAME),
+        save_best_only=True,
+        verbose=True,
+        monitor=EARLY_STOP_MONITOR,
+        mode='min',
+        prefix=MODEL_NAME
+    )
     
     from pytorch_lightning.callbacks import EarlyStopping
     early_stop_callback = EarlyStopping(
-        monitor='avg_val_loss',
+        monitor=EARLY_STOP_MONITOR,
         min_delta=0.00,
-        patience=5,
-        verbose=True,
+        patience=EARLY_STOP_PATIENCE,
+        verbose=False,
         mode='min'
     )
     
-    if torch.cuda.is_available():
-        print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
-        trainer = pl.Trainer(accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
-                             max_nb_epochs=EPOCHS, early_stop_callback=early_stop_callback)
-    else:
-        trainer = pl.Trainer(max_nb_epochs=EPOCHS, checkpoint_callback=checkpoint_callback)
-    trainer.fit(brontes_model)
+    try:
+        if torch.cuda.is_available():
+            print('early_stop_minitor: {}'.format(EARLY_STOP_MONITOR))
+            print('early_stop_patience: {}'.format(EARLY_STOP_PATIENCE))
+            print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
+            trainer = pl.Trainer(accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
+                                 max_nb_epochs=EPOCHS, min_nb_epochs=30, 
+                                 checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback)
+        else:
+            trainer = pl.Trainer(max_nb_epochs=EPOCHS, checkpoint_callback=checkpoint_callback)
+        trainer.fit(plmodel)
+    except KeyboardInterrupt:
+        MODEL_NAME += '_ki'
 
     # save model
-    SAVER_PATH = 'saver/'
+    SAVER_PATH = 'saver_pl/'
     os.makedirs(SAVER_PATH, exist_ok=True)
-    saved_model = SAVER_PATH + MODEL_NAME + '_7.pt'
+    saved_model = SAVER_PATH + MODEL_NAME + '.pt'
 #     torch.save(brontes_model.model, saved_model)
-    torch.save({'state_dict': brontes_model.state_dict()}, saved_model)
+    torch.save({'state_dict': plmodel.state_dict()}, saved_model)
     # mlflow.log_artifact(save_model)
+    print('{} saved.'.format(saved_model))
 
 if __name__ == "__main__":
     main(args=parser.parse_args())

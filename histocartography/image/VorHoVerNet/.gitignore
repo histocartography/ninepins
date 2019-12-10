@@ -4,9 +4,10 @@ CoNSeP/*
 
 # test script
 
+*.ckpt
+
 test.py
 model/hover_net.py
 opt.py
 config.py
-train_pl.py
 train.py

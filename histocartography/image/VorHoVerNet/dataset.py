@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from dataset_reader import *
 from distance_maps import get_distancemaps
 
-def gen_pseudo_masks(root='CoNSeP/', split):
+def gen_pseudo_masks(root='CoNSeP/', split='train'):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
@@ -62,13 +62,13 @@ def data_reader(root=None, split='train', channel_first=True, part=None):
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
     images = []
     labels = []
-    for i in indice:
-        print('Loading {} dataset... {:02d}/{:02d}'.format(split, i, IDX_LIMITS[split]), end='\r')
+    for i, idx in enumerate(indice):
+        print('Loading {} dataset... {:02d}/{:02d}'.format(split, i + 1, len(indice)), end='\r')
         # original image
-        images.append(data_reader.read_image(i, split))
+        images.append(data_reader.read_image(idx, split))
 
         # pseudo labels
-        pseudolabel_path = data_reader.get_path(i, split, 'label').replace('Labels', 'PseudoLabels')
+        pseudolabel_path = data_reader.get_path(idx, split, 'label').replace('Labels', 'PseudoLabels')
         labels.append(np.load(pseudolabel_path))
     print('')
     return images, labels

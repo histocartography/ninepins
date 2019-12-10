@@ -25,7 +25,8 @@ class CustomLoss(nn.Module):
 
     def __init__(self, weights=[1, 1, 2, 1]):
         super(CustomLoss, self).__init__()
-        self.weights = torch.FloatTensor(weights)
+        self.weights = np.array(weights)
+#         self.weights = self.weights / sum(self.weights)
     
     @staticmethod
     def dice_loss(pred, gt, epsilon=1e-3):
@@ -51,11 +52,11 @@ class CustomLoss(nn.Module):
         batchsize_ = maps.shape[0]
         hk, vk = get_sobel_kernel(5)
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-        hk = torch.tensor(hk, requires_grad=False).view(1, 1, 5, 5).repeat(1, batchsize_, 1, 1).to(device)
-        vk = torch.tensor(vk, requires_grad=False).view(1, 1, 5, 5).repeat(1, batchsize_, 1, 1).to(device)
+        hk = torch.tensor(hk, requires_grad=False).view(1, 1, 5, 5).to(device)
+        vk = torch.tensor(vk, requires_grad=False).view(1, 1, 5, 5).to(device)
 
-        h = maps[..., 0].unsqueeze(0)
-        v = maps[..., 1].unsqueeze(0)
+        h = maps[..., 0].unsqueeze(1)
+        v = maps[..., 1].unsqueeze(1)
 
         dh = F.conv2d(h, hk, padding=2).permute(0, 2, 3, 1)
         dv = F.conv2d(v, vk, padding=2).permute(0, 2, 3, 1)
@@ -65,14 +66,17 @@ class CustomLoss(nn.Module):
         focus = torch.cat((focus, focus), axis=-1)
         pred_grad = self.get_gradient(pred)
         gt_grad = self.get_gradient(gt)
-        return F.mse_loss(pred_grad, gt_grad)
+        loss = pred_grad - gt_grad
+        loss = focus * (loss * loss)
+        loss = torch.sum(loss) / (torch.sum(loss) + 1.0e-8)
+#         return F.mse_loss(pred_grad, gt_grad)
+        return loss
 
     def forward(self, preds, gts, prefix=None, mode='single'):
+        # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
-        gt_seg = gts[..., 0]
-        gt_hv = gts[..., 1:3]
-        pred_seg = preds[..., 0]
-        pred_hv = preds[..., 1:3]
+        gt_seg, gt_hv = torch.split(gts, [1, 2], dim=-1)
+        pred_seg, pred_hv = torch.split(preds, [1, 2], dim=-1)
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # dice loss
