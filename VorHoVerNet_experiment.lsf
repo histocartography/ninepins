@@ -1,0 +1,29 @@
+#BSUB -q prod.med
+#BSUB -n 1
+#BSUB -J "VorHoVerNet"
+#BSUB -e "/u/tye/VHV_log.%J.stderr"
+#BSUB -o "/u/tye/VHV_log.%J.stdout"
+
+# Time stamp
+time_stamp=$(date +"%Y%m%d%H%M%S")
+
+module load Anaconda3/2019.03-rhel-7
+
+# Training & validation
+#TODO: modify for our case
+NUMBER_OF_WORKERS=8
+MODEL_NAME=default
+SEED=42
+BATCH_SIZE=10
+EPOCHS=20
+LEARNING_RATE=1e-6
+UNET_DEPTH=4
+FILTERS=16
+PATCH_SIZE=512
+
+source /u/tye/set_environment_variables
+
+export MLFLOW_EXPERIMENT_NAME=tye_VorHoVerNet_gpu
+
+#TODO: modify for our case
+/u/tye/.local/bin/mlflow run /u/tye/code/histocartography/experiments/fra_gleason2019 -P model_name=$MODEL_NAME -P batch_size=$BATCH_SIZE -P epochs=$EPOCHS -P learning_rate=$LEARNING_RATE -P patch_size=$PATCH_SIZE -P filters=$FILTERS -P unet_depth=$UNET_DEPTH
