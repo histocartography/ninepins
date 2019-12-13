@@ -73,7 +73,8 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
 
 if __name__ == '__main__':
     # load model
-    checkpoint = torch.load('saver_pl/model_003_ckpt_epoch_43.ckpt', map_location=torch.device('cpu'))
+    model_name = 'model_004_ckpt_epoch_36.ckpt'
+    checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('trained epoch: {}'.format(checkpoint['epoch']))
     model = Net()
     model.load_state_dict(checkpoint['state_dict'])
@@ -85,4 +86,4 @@ if __name__ == '__main__':
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
-    inference(model, test_loader, figpath_fix='model_003_ckpt_epoch_43.ckpt')
+    inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
