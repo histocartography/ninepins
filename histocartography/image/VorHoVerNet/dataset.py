@@ -120,5 +120,5 @@ class CoNSeP_cropped(Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    gen_pseudo_masks(root=None, split='train')
-    gen_pseudo_masks(root=None, split='test')
+    gen_pseudo_masks(split='train')
+    gen_pseudo_masks(split='test')
