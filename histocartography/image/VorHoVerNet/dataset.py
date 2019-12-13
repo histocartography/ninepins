@@ -111,7 +111,7 @@ class CoNSeP_cropped(Dataset):
         self.crop_labels = np.transpose(self.crop_labels, dims)
         
     def patches_per_image(self):
-        return int(len(self.crop_images), len(self.images))
+        return int(len(self.crop_images) / len(self.images))
         
     def __getitem__(self, index):
         return self.crop_images[index], self.crop_labels[index]
