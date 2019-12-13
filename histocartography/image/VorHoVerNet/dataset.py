@@ -19,7 +19,7 @@ def gen_pseudo_masks(root='CoNSeP/', split='train'):
     from utils import get_point_from_instance
     
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
-    IDX_LIMITS = DATASET_IDX_LIMITS['CoNSeP']
+    IDX_LIMITS = data_reader.IDX_LIMITS
     
     for i in range(1, IDX_LIMITS[split] + 1):
         print('Generating {} dataset... {:02d}/{:02d}'.format(split, i, IDX_LIMITS[split]), end='\r')
@@ -57,7 +57,7 @@ def data_reader(root=None, split='train', channel_first=True, part=None):
         images, labels
     """
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
-    IDX_LIMITS = DATASET_IDX_LIMITS['CoNSeP']
+    IDX_LIMITS = data_reader.IDX_LIMITS
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
     images = []
