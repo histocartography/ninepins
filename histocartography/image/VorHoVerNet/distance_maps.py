@@ -1,10 +1,5 @@
-# +
 import numpy as np
-
 from Voronoi_label import get_voronoi_edges
-
-
-# -
 
 def get_boundary(img):
     row = np.any(img, axis=1)
@@ -14,7 +9,6 @@ def get_boundary(img):
     rmax += 1
     cmax += 1
     return [rmin, rmax, cmin, cmax]
-
 
 def area_vhmap(img):
     rmin, rmax, cmin, cmax = get_boundary(img)
@@ -39,18 +33,22 @@ def area_vhmap(img):
     
     return v_map, h_map
 
-
-def get_distancemaps(point_mask, seg_mask):
-    # get color map
-    maps = {}
-    edges = get_voronoi_edges(point_mask, extra_out=maps)
-    colormap = maps['Voronoi_cell']
+def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
+    seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
+    if use_full_mask:
+        colormap = seg_mask
+    else:
+        # get color map
+        maps = {}
+        edges = get_voronoi_edges(point_mask, extra_out=maps)
+        colormap = maps['Voronoi_cell']
     
     # instance masks from colormap
-    seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
     v_map, h_map = [np.zeros_like(seg_mask, dtype=np.float32) for _ in range(2)]
-    for i in range(colormap.min(), colormap.max() + 1):
-        vm, hm = area_vhmap(np.where(colormap == i, seg_mask, 0))
+    max_ = int(colormap.max())
+    min_ = int(colormap.min())
+    for i in range(min_, max_ + 1):
+        vm, hm = area_vhmap(np.where(colormap == i, 1, 0))
         v_map += vm
         h_map += hm
         

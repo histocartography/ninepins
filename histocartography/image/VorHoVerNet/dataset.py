@@ -2,20 +2,21 @@ import numpy as np
 from skimage.io import imread
 from torch.utils.data import Dataset
 from dataset_reader import *
-from distance_maps import get_distancemaps
 
-def gen_pseudo_masks(root='CoNSeP/', split='train'):
+def gen_pseudo_masks(root='CoNSeP/', split='train', contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
     Args:
-        root: path to the top of the dataset
-        split: data types, 'train' or 'test'
+        root (str): path to the top of the dataset
+        split (str): data types, 'train' or 'test'
+        contain_both (bool): if contain exhausted masks
     """
     import os
     from skimage.io import imsave
     from skimage.morphology import binary_dilation
     from pseudo_label import gen_pseudo_label
+    from distance_maps import get_distancemaps
     from utils import get_point_from_instance
     
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
@@ -35,42 +36,66 @@ def gen_pseudo_masks(root='CoNSeP/', split='train'):
         point_mask = data_reader.read_points(i, split)
         v_map, h_map = get_distancemaps(point_mask, seg_mask)
         pseudo_mask = np.stack((seg_mask.astype(np.float32), v_map, h_map), axis=-1)
+        if contain_both:
+            seg_gt = np.where(lab > 0, 1, 0)
+            v_map, h_map = get_distancemaps(None, lab, use_full_mask=True)
+            full_mask = np.stack((seg_gt.astype(np.float32), v_map, h_map), axis=-1)
 
         # save npy file (and png file for visualization)
-        path = '{}/{}/PseudoLabels'.format(root, split.capitalize())
-        os.makedirs(path, exist_ok=True)
-        imsave('{}/{}_{}.png'.format(path, split, i), seg_mask.astype(np.uint8) * 255)
-        np.save('{}/{}_{}.npy'.format(path, split, i), pseudo_mask)
+        path_pseudo = '{}/{}/PseudoLabels'.format(root, split.capitalize())
+        os.makedirs(path_pseudo, exist_ok=True)
+        imsave('{}/{}_{}.png'.format(path_pseudo, split, i), seg_mask.astype(np.uint8) * 255)
+        np.save('{}/{}_{}.npy'.format(path_pseudo, split, i), pseudo_mask)
+        if contain_both:
+            path_full = '{}/{}/FullLabels'.format(root, split.capitalize())
+            os.makedirs(path_full, exist_ok=True)
+            imsave('{}/{}_{}.png'.format(path_full, split, i), seg_gt.astype(np.uint8) * 255)
+            np.save('{}/{}_{}.npy'.format(path_full, split, i), full_mask)
     print('')
 
-def data_reader(root=None, split='train', channel_first=True, part=None):
+def data_reader(root=None, split='train', channel_first=True, contain_both=False, part=None):
     """
-    Return images and labels according to type of split
+    Return images and labels according to the type from split
 
     Args:
-        root: path to the top of the dataset
-        split: data types, 'train' or 'test'
-        channel_first: if channel is first or not
-        part: select indice of data, tuple or list
+        root (str): path to the top of the dataset
+        split (str): data types, 'train' or 'test'
+        channel_first (bool): if channel is first or not
+        contain_both (bool): if contain exhausted masks
+        part (tuple, list): selected indice of data
     
-    Return:
-        images, labels
+    Returns:
+        (tuple):
+            images (numpy.ndarray)
+            labels (numpy.ndarray) / (dict contain two numpy.ndarray if contain_both=True)
     """
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
     IDX_LIMITS = data_reader.IDX_LIMITS
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
     images = []
-    labels = []
+    labels = {}
+    fulllabels = []
+    pseudolabels = []
     for i, idx in enumerate(indice):
         print('Loading {} dataset... {:02d}/{:02d}'.format(split, i + 1, len(indice)), end='\r')
         # original image
         images.append(data_reader.read_image(idx, split))
 
         # pseudo labels
-        pseudolabel_path = data_reader.get_path(idx, split, 'label').replace('Labels', 'PseudoLabels')
-        labels.append(np.load(pseudolabel_path))
+        fulllabel_path = data_reader.get_path(idx, split, 'label')
+        pseudolabel_path = fulllabel_path.replace('Labels', 'PseudoLabels')
+        pseudolabels.append(np.load(pseudolabel_path))
+
+        # full labels (optional)
+        if contain_both:
+            fulllabel_path = fulllabel_path.replace('Labels', 'FullLabels')
+            fulllabels.append(np.load(fulllabel_path))
     print('')
+
+    labels['pseudo'] = pseudolabels
+    if contain_both:
+        labels['full'] = fulllabels
     return images, labels
 
 class CoNSeP_cropped(Dataset):
@@ -120,5 +145,5 @@ class CoNSeP_cropped(Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    gen_pseudo_masks(root=None, split='train')
-    gen_pseudo_masks(root=None, split='test')
+    gen_pseudo_masks(split='train', contain_both=True)
+    gen_pseudo_masks(split='test', contain_both=True)
