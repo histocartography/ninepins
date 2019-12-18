@@ -259,6 +259,7 @@ def main(arguments):
     saved_model = f'{tempfile.mkdtemp()}/{MODEL_NAME}.pt'
     torch.save(brontes_model.model, saved_model)
     mlflow.log_artifact(saved_model)
+    mlflow.pytorch.log_model(brontes_model.model, "deployable_model")
 
 
 if __name__ == "__main__":
