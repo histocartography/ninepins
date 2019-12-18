@@ -260,7 +260,7 @@ def main(arguments):
     saved_model = f'{tempfile.mkdtemp()}/{MODEL_NAME}.pt'
     torch.save(brontes_model.model, saved_model)
     mlflow.log_artifact(saved_model)
-    mlflow.pytorch.log_model(brontes_model.model, "deplyable_model", conda_env="conda.yml")
+    mlflow.pytorch.log_model(brontes_model.model, "artifacts/model", conda_env="conda.yml")
 
 
 if __name__ == "__main__":
