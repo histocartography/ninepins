@@ -89,18 +89,26 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         
         # transpose and reshape
         img = img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
-        gt = gt.squeeze(0).permute(1, 2, 0)
+        gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         pred = pred.squeeze(0).detach().cpu().numpy()
 
-        ori = img.astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
-        imsave(filename.format("ori"), ori)
-        pred0 = scale(pred[..., 0], 255, 0).astype(np.uint8)
-        pred1 = scale(pred[..., 1], 255, 0).astype(np.uint8)
-        pred2 = scale(pred[..., 2], 255, 0).astype(np.uint8)
+        # ori = img.astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
+        # imsave(filename.format("ori"), ori)
+        # pred0 = scale(pred[..., 0], 255, 0).astype(np.uint8)
+        # pred1 = scale(pred[..., 1], 255, 0).astype(np.uint8)
+        # pred2 = scale(pred[..., 2], 255, 0).astype(np.uint8)
 
-        imsave(filename.format("seg"), pred0)
-        imsave(filename.format("dist1"), pred1)
-        imsave(filename.format("dist2"), pred2)
+        # imsave(filename.format("seg"), pred0)
+        # imsave(filename.format("dist1"), pred1)
+        # imsave(filename.format("dist2"), pred2)
+
+        gt0 = scale(gt[..., 0], 255, 0).astype(np.uint8)
+        gt1 = scale(gt[..., 1], 255, 0).astype(np.uint8)
+        gt2 = scale(gt[..., 2], 255, 0).astype(np.uint8)
+
+        imsave(filename.format("seg_gt"), gt0)
+        imsave(filename.format("dist1_gt"), gt1)
+        imsave(filename.format("dist2_gt"), gt2)
 
 if __name__ == '__main__':
     # load model
