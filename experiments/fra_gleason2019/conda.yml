@@ -1,9 +1,9 @@
 name: histocartography
 dependencies:
   - python>=3.6
+  - pytorch
   - pip
   - pip:
-    - torch
     - torchvision
     - pytorch-lightning==0.4.8 # --no-deps
     - mlflow>=1.2.0
