@@ -37,6 +37,7 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
     seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
     if use_full_mask:
         colormap = seg_mask
+        seg_mask = np.where(seg_mask > 0, 1, 0)
     else:
         # get color map
         maps = {}
@@ -45,10 +46,10 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
     
     # instance masks from colormap
     v_map, h_map = [np.zeros_like(seg_mask, dtype=np.float32) for _ in range(2)]
-    max_ = int(colormap.max())
-    min_ = int(colormap.min())
-    for i in range(min_, max_ + 1):
-        vm, hm = area_vhmap(np.where(colormap == i, 1, 0))
+    to_idx = int(colormap.max()) + 1
+    from_idx = int(colormap.min()) + 1
+    for i in range(from_idx, to_idx):
+        vm, hm = area_vhmap(np.where(colormap == i, seg_mask, 0))
         v_map += vm
         h_map += hm
         

@@ -46,7 +46,7 @@ def image_to_save(im):
     else:
         return im.astype("uint8")
 
-def get_point_from_instance(inst, ignore_size=5, binary=False):
+def get_point_from_instance(inst, ignore_size=10, binary=False):
     """
     @inst: instance map of nuclei. (integers larger than 0 indicates the nuclei instance)
     @ignore_size: minimum size of a nuclei
@@ -147,3 +147,11 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
     mask = np.where(mask, 255, 0)
     gradient = get_gradient(mask)
     image[gradient > 0] = color
+
+def scale(img, vmax, vmin):
+    max_ = img.max()
+    min_ = img.min() if img.min() != 0 else 1
+    img[img > 0] *= (vmax / max_)
+    img[img < 0] *= (vmin / min_)
+    return img
+    

@@ -3,7 +3,7 @@ from skimage.io import imread
 from torch.utils.data import Dataset
 from dataset_reader import *
 
-def gen_pseudo_masks(root='CoNSeP/', split='train', contain_both=False):
+def gen_pseudo_masks(root='./CoNSeP/', split='train', contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
@@ -74,29 +74,85 @@ def data_reader(root=None, split='train', channel_first=True, contain_both=False
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
     images = []
-    labels = {}
-    fulllabels = []
-    pseudolabels = []
+    labels = []
+    # fulllabels = []
+    # pseudolabels = []
     for i, idx in enumerate(indice):
         print('Loading {} dataset... {:02d}/{:02d}'.format(split, i + 1, len(indice)), end='\r')
         # original image
-        images.append(data_reader.read_image(idx, split))
+        images.append(data_reader.read_image(idx, split) / 255)
 
         # pseudo labels
         fulllabel_path = data_reader.get_path(idx, split, 'label')
         pseudolabel_path = fulllabel_path.replace('Labels', 'PseudoLabels')
-        pseudolabels.append(np.load(pseudolabel_path))
+        pseudolabels = np.load(pseudolabel_path)
 
         # full labels (optional)
         if contain_both:
             fulllabel_path = fulllabel_path.replace('Labels', 'FullLabels')
-            fulllabels.append(np.load(fulllabel_path))
+            fulllabels = np.load(fulllabel_path)
+            labels.append(np.concatenate((pseudolabels, fulllabels), axis=-1))
+        else:
+            labels.append(pseudolabels)
     print('')
-
-    labels['pseudo'] = pseudolabels
-    if contain_both:
-        labels['full'] = fulllabels
     return images, labels
+
+class AugmentedDataset(Dataset):
+    """
+    Apply augmentation on the input dataset according to transform and target transform.
+
+    Args:
+        dataset (torch.utils.data.Dataset): the dataset to be augmented
+        transform, target_transform (torchvision.transforms.Compose): transform methods to be applied.
+            if target_transform is None, it will use whatever in transform
+    """
+    def __init__(self, dataset, transform=None, target_transform=None, channel_first=True):
+        self.dataset = dataset
+        self.channel_first = channel_first
+        self.transform = transform
+        self.target_transform = target_transform
+        self.check_trans()
+
+    def check_trans(self):    
+        if self.transform is not None:
+            print('transform on image')
+        if self.target_transform is not None:
+            print('transform on labels')
+        if self.transform is None and self.target_transform is None:
+            print('empty transforms')
+        
+    def __getitem__(self, index):
+        img, gts = self.dataset[index]
+        img = (img * 255).astype(np.uint8)
+        gts = (gts * 255).astype(np.uint8)
+
+        # print('a', img.shape, gts.shape, img.max(), img.min())
+        if self.channel_first:
+            img = np.transpose(img, (1, 2, 0))
+            gts = np.transpose(gts, (1, 2, 0))
+        
+        # print('b', img.shape, gts.shape)
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.target_transform is not None:
+            if gts.shape[-1] > 3:
+                gt02, gt35 = np.split(gts, 2, axis=-1)
+                gt02 = self.target_transform(gt02)
+                gt35 = self.target_transform(gt35)
+                gts = np.concatenate((gt02, gt35), axis=-1)
+            else:
+                gts = self.target_transform(gts)
+        img = np.array(img).astype(np.float32) / 255
+        gts = np.array(gts).astype(np.float32) / 255
+        # print('c', img.shape, gts.shape)
+        if self.channel_first:
+            img = np.transpose(img, (2, 0, 1))
+            gts = np.transpose(gts, (2, 0, 1))
+        # print('d', img.shape, gts.shape, img.max(), img.min())
+        return img, gts
+
+    def __len__(self):
+        return len(self.dataset)
 
 class CoNSeP_cropped(Dataset):
     """

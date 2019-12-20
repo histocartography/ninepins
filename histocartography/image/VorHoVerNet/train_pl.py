@@ -6,13 +6,14 @@ import os
 import glob
 
 import torch
+from torchvision import transforms as tfs
 # import mlflow
 import numpy as np
 import pytorch_lightning as pl
 
 # from torch.utils.data import DataLoader
 # from torch.utils.data.dataset import random_split
-from dataset import CoNSeP_cropped, data_reader
+from dataset import data_reader, CoNSeP_cropped, AugmentedDataset
 # from brontes import Brontes
 from pl_net import plNet
 from model.vorhover_net import Net, CustomLoss
@@ -107,17 +108,39 @@ def main(args):
     ]
     log.debug(pairs)
     """
-    
+
+    # augmentation
+    # TODO: original mask at bigger size so that it can be cropped into disired size after rotation
+    # augs_both = tfs.Compose([
+    #     tfs.ToPILImage(),
+    #     tfs.RandomHorizontalFlip(), 
+    #     tfs.RandomVerticalFlip(),
+    #     tfs.RandomRotation(45)
+    # ])
+
+    # augs_both = tfs.Compose([
+    #     tfs.ToPILImage(),
+    #     tfs.RandomHorizontalFlip(),
+    #     tfs.RandomRotation(45, fill=1.0)
+    # ])
+
+    augs_image = tfs.Compose([
+        tfs.ToPILImage(),
+        tfs.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
+    ])
+
     # prepare data_loaders
-    train_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='train', part=None))
+    train_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='train', contain_both=True, part=None))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
+    # train_data = AugmentedDataset(dataset=train_data, transform=augs_both, target_transform=augs_both)
+    train_data = AugmentedDataset(dataset=train_data, transform=augs_image, target_transform=None)
     dataset_loaders = {
         'train': torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS), 
         'val': torch.utils.data.DataLoader(valid_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS)
     }
-    
+
     # define model and optimizer
     model = Net(batch_size=BATCH_SIZE)
 #     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -134,7 +157,7 @@ def main(args):
 
     # set brontes
     plmodel = plNet(
-        model=Net,
+        model=model,
         loss=CustomLoss(),
         data_loaders=dataset_loaders,
         lr=LEARNING_RATE,
@@ -158,7 +181,7 @@ def main(args):
         monitor=EARLY_STOP_MONITOR,
         min_delta=0.00,
         patience=EARLY_STOP_PATIENCE,
-        verbose=False,
+        verbose=True,
         mode='min'
     )
     
@@ -178,12 +201,18 @@ def main(args):
 
     # save model
     SAVER_PATH = 'saver_pl/'
+    MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(plmodel.epoch)
     os.makedirs(SAVER_PATH, exist_ok=True)
-    saved_model = SAVER_PATH + MODEL_NAME + '.pt'
-#     torch.save(brontes_model.model, saved_model)
-    torch.save({'state_dict': plmodel.state_dict()}, saved_model)
+    saved_model = SAVER_PATH + MODEL_NAME
+    # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
+    state_dict = {
+        'epoch': plmodel.epoch,
+        'state_dict': plmodel.state_dict()
+    }
+    torch.save(state_dict, saved_model)
     # mlflow.log_artifact(save_model)
     print('{} saved.'.format(saved_model))
 
 if __name__ == "__main__":
     main(args=parser.parse_args())
+    # python train_pl.py -n model_005 --batch_size 8 --epochs 100 --early_stop_patience 10
