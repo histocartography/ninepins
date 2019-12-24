@@ -4,14 +4,14 @@ import random
 import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
-
+from utils import scale
 
 class plNet(pl.LightningModule):
 
     def __init__(self, model, loss, data_loaders, lr=1e-4, visualize=False, vdir='model'):
         super(plNet, self).__init__()
 
-        self.model = model(batch_size=8)
+        self.model = model
         self.loss = loss
         self.data_loaders = data_loaders
         self.lr = lr
@@ -58,7 +58,8 @@ class plNet(pl.LightningModule):
             gts = gts.permute(0, 2, 3, 1).detach().cpu().numpy()
             preds = preds.detach().cpu().numpy()
 
-            fig, ax = plt.subplots(3, 4, figsize=(12, 9))
+            fig, ax = plt.subplots(4, 4, figsize=(12, 9))
+            gap = (psize - vsize) // 2 if gap is None else gap
             for i in range(imgs.shape[0]):
                 img = imgs[i, ...]
                 gt = gts[i, ...]
@@ -67,21 +68,39 @@ class plNet(pl.LightningModule):
                 for a in ax.ravel():
                     a.axis('off')
                 fig.suptitle('Epoch {} on {} patch {}'.format(self.epoch, inference_on, i + 1), fontsize=16)
-                gap = (psize - vsize) // 2 if gap is None else gap
-                ax[0, 0].imshow(img.astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :])
-                ax[0, 1].imshow(gt[..., 0] * 255)
-                ax[0, 2].imshow(gt[..., 1] * 255)
-                ax[0, 3].imshow(gt[..., 2] * 255)
-                ax[1, 1].imshow(pred[..., 0] * 255)
-                ax[1, 2].imshow(pred[..., 1] * 255)
-                ax[1, 3].imshow(pred[..., 2] * 255)
-                seg_thres = np.where(pred[..., 0] >= 0.5, 255, 0)
-                ax[2, 1].imshow(seg_thres)
-                ax[2, 2].imshow(np.where(seg_thres == 255, pred[..., 1], 0))
-                ax[2, 3].imshow(np.where(seg_thres == 255, pred[..., 2], 0))
-                plt.draw()
-        #         plt.show()
-
+                
+                # original image for every colume
+                ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
+                ax[0, 0].imshow(ori)
+                ax[1, 0].imshow(ori)
+                ax[2, 0].imshow(ori)
+                ax[3, 0].imshow(ori)
+                # first row: original image and exhausted masks
+                gtf0 = scale(gt[..., 3], 1., 0)
+                gtf1 = scale(gt[..., 4], 1., -1.)
+                gtf2 = scale(gt[..., 5], 1., -1.)
+                ax[0, 1].imshow(gtf0)
+                ax[0, 2].imshow(gtf1)
+                ax[0, 3].imshow(gtf2)
+                # second row: original image and pseudo masks
+                gt0 = scale(gt[..., 0], 1., 0)
+                gt1 = scale(gt[..., 1], 1., -1.)
+                gt2 = scale(gt[..., 2], 1., -1.)
+                ax[1, 1].imshow(gt0)
+                ax[1, 2].imshow(gt1)
+                ax[1, 3].imshow(gt2)
+                # third row: original image and pure predictions
+                pred0 = scale(pred[..., 0], 1., 0)
+                pred1 = scale(pred[..., 1], 1., -1.)
+                pred2 = scale(pred[..., 2], 1., -1.)
+                ax[2, 1].imshow(pred0)
+                ax[2, 2].imshow(pred1)
+                ax[2, 3].imshow(pred2)
+                # fourth row: original image and masked predictions
+                seg_thres = np.where(pred[..., 0] >= 0.5, 1., 0)
+                ax[3, 1].imshow(seg_thres)
+                ax[3, 2].imshow(np.where(seg_thres == 1, pred1, 0))
+                ax[3, 3].imshow(np.where(seg_thres == 1, pred2, 0))
                 plt.savefig('{}/{}_patch{:02d}_epoch{:03d}.png'.format(self.figpath, self.inf_type[typ], i + 1, self.epoch), dpi=120)
                 plt.cla()
             plt.close()
@@ -96,13 +115,10 @@ class plNet(pl.LightningModule):
         torch.save(checkpoint, checkpoint_path)
 
     def training_step(self, batch, idx):
-#         if idx == 0:
-#             self.t = time.time()
         img, gts = batch
         preds = self.forward(img)
         loss = self.loss(preds, gts)
-#         print('EPOCH {:03d}, {:03d}/{:03d} batches, {:.2f}s per batch, loss: {:.4f}'.format(self.epoch, idx + 1, self.num_patches[0], (time.time() - self.t)/(idx + 1), loss), end='\r')
-        
+
         # get random inference batch
         if self.epoch == 1:
             if self.rints[0] is None:
@@ -124,6 +140,7 @@ class plNet(pl.LightningModule):
     def validation_step(self, batch, idx):
         img, gts = batch
         preds = self.forward(img)
+        # print('valid', img.detach().cpu().numpy().max(), gts[..., 0].detach().cpu().numpy().max())
 
         # get random inference batch
         if self.epoch == 1:
@@ -164,5 +181,3 @@ class plNet(pl.LightningModule):
     # @pl.data_loader
     # def test_dataloader(self):
     #     return self.data_loaders[2]
-
-

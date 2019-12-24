@@ -148,7 +148,7 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
                         .append(binary_dilation, disk(3))\
                         .append(binary_fill_holes)\
                         .append(binary_erosion, disk(3))\
-                        .append("__or__", binary_dilation(point_mask, disk(10)))\
+                        .append("__or__", binary_dilation(point_mask, disk(5)))\
                         (nuclei)
     # .append("__and__", edges == 0)\ 152
 #     .append(binary_erosion, disk(2))\

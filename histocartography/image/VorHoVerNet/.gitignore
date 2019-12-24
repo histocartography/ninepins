@@ -5,6 +5,8 @@ CoNSeP/*
 # test script
 
 *.ckpt
+*.pt
+*.pkl
 
 test.py
 model/hover_net.py

@@ -75,25 +75,26 @@ class CustomLoss(nn.Module):
     def forward(self, preds, gts, prefix=None, mode='single'):
         # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
-        gt_seg, gt_hv = torch.split(gts, [1, 2], dim=-1)
+        gt_seg, gt_hv = torch.split(gts[..., :3], [1, 2], dim=-1)
         pred_seg, pred_hv = torch.split(preds, [1, 2], dim=-1)
         # binary cross entropy loss
+        # print('loss', preds.shape, gts.shape)
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # dice loss
         dice = self.dice_loss(pred_seg, gt_seg)
         # mean square error of distance maps
         mse = F.mse_loss(pred_hv, gt_hv)
-        mse_g = self.msge_loss(pred_hv, gt_hv, gt_seg)
+        msge = self.msge_loss(pred_hv, gt_hv, gt_seg)
         
-        loss = bce * self.weights[0] + dice * self.weights[1] + mse * self.weights[2] + mse_g * self.weights[3] 
+        loss = bce * self.weights[0] + dice * self.weights[1] + mse * self.weights[2] + msge * self.weights[3] 
 
         if mode == 'single':
             return loss
         
-        names = ['loss', 'bce', 'dice', 'mse', 'mse_g']
-        losses = [loss, bce, dice, mse, mse_g]
+        names = ['loss', 'bce', 'dice', 'mse', 'msge']
+        losses = [loss, bce, dice, mse, msge]
         if prefix is not None:
-            names = ['{}_{}'.format(prefix, n) for n in ['loss', 'bce', 'dice', 'mse', 'mse_g']]
+            names = ['{}_{}'.format(prefix, n) for n in names]
         return {name: loss for name, loss in zip(names, losses)}
 
 class PreActResBlock(nn.Module):
@@ -289,20 +290,20 @@ class Net(nn.Module):
         predmap_coded = torch.cat((pred_seg, pred_hov), -1)
         return predmap_coded
 
-    def one_hot(self, indices, depth):
-        """
-        Returns a one-hot tensor.
-        PyTorch equivalent of Tensorflow's tf.one_hot.
-        https://github.com/kjunelee/MetaOptNet/blob/master/train.py
-        """
+    # def one_hot(self, indices, depth):
+    #     """
+    #     Returns a one-hot tensor.
+    #     PyTorch equivalent of Tensorflow's tf.one_hot.
+    #     https://github.com/kjunelee/MetaOptNet/blob/master/train.py
+    #     """
 
-        enco_indicies = torch.zeros(indices.size() + torch.Size([depth])).cuda()
-        index = indices.view(indices.size() + torch.Size([1]))
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        index = index.float().to(device)
-        encoded_indicies = enco_indicies.scatter_(-1, index, 1) #axis=-1
+    #     enco_indicies = torch.zeros(indices.size() + torch.Size([depth])).cuda()
+    #     index = indices.view(indices.size() + torch.Size([1]))
+    #     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #     index = index.float().to(device)
+    #     encoded_indicies = enco_indicies.scatter_(-1, index, 1) #axis=-1
 
-        return encoded_indicies
+    #     return encoded_indicies
 
     def crop_op(self, x, cropping, data_format='channels_first'):
         """
