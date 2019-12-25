@@ -4,13 +4,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataset import CoNSeP_cropped, data_reader
 from model.vorhover_net import Net, CustomLoss
-
+from functools import reduce
 
 def scale(img, vmax, vmin):
     max_ = img.max()
     min_ = img.min()
     img[img > 0] *= (vmax / max_)
     img[img < 0] *= (vmin / min_)
+    return img
+
+def shift_and_scale(img, vmax, vmin):
+    max_ = img.max()
+    min_ = img.min()
+    rang = max_ - min_
+    vrang = vmax - vmin
+    img -= (min_ - vmin)
+    img *= (vrang / rang)
     return img
 
 def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
@@ -87,41 +96,58 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
     
     os.makedirs('./inference/{}'.format(figpath_fix), exist_ok=True)
 
+    subs = ["seg", "dist1", "dist2"]
+    pngsubs = subs + list(map(lambda x: x+"_gt", subs))
+    npysubs = subs
+
+    savedir = './inference/{}/patch{:04d}'
+
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
-        filename = './inference/{}/patch{:04d}_{}.png'.format(figpath_fix, idx + 1, "{}")
+        imgdir = savedir.format(figpath_fix, idx + 1)
+        os.makedirs(imgdir, exist_ok=True)
+        filename = imgdir + '/{}.png'
+        filename_npy = imgdir + '/{}.npy'
+
+        if reduce(lambda x, y: x and os.path.isfile(filename.format(y)), pngsubs, True) and \
+            reduce(lambda x, y: x and os.path.isfile(filename_npy.format(y)), npysubs, True):
+            continue
 
         # get prediction
         with torch.no_grad():
-            pred = model(img)
+            pred = model(img * 255) # for old checkpoints that were trained with 0-255 images
+            # pred = model(img)
         
         # transpose and reshape
         img = img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
         pred = pred.squeeze(0).detach().cpu().numpy()
 
-        gt0 = scale(gt[..., 0], 255, 0).astype(np.uint8)
-        gt1 = scale(gt[..., 1], 255, 0).astype(np.uint8)
-        gt2 = scale(gt[..., 2], 255, 0).astype(np.uint8)
+        gt0 = shift_and_scale(gt[..., 0], 255, 0).astype(np.uint8)
+        gt1 = shift_and_scale(gt[..., 1], 255, 0).astype(np.uint8)
+        gt2 = shift_and_scale(gt[..., 2], 255, 0).astype(np.uint8)
 
         imsave(filename.format("seg_gt"), gt0)
         imsave(filename.format("dist1_gt"), gt1)
         imsave(filename.format("dist2_gt"), gt2)
-        ori = img.astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
+        ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
         imsave(filename.format("ori"), ori)
-        pred0 = scale(pred[..., 0], 1., 0)
-        pred1 = scale(pred[..., 1], 1., -1.)
-        pred2 = scale(pred[..., 2], 1., -1.)
+        pred0 = shift_and_scale(pred[..., 0], 255, 0).astype(np.uint8)
+        pred1 = shift_and_scale(pred[..., 1], 255, 0).astype(np.uint8)
+        pred2 = shift_and_scale(pred[..., 2], 255, 0).astype(np.uint8)
 
         imsave(filename.format("seg"), pred0)
         imsave(filename.format("dist1"), pred1)
         imsave(filename.format("dist2"), pred2)
+        np.save(filename_npy.format("seg"), pred[..., 0])
+        np.save(filename_npy.format("dist1"), pred[..., 1])
+        np.save(filename_npy.format("dist2"), pred[..., 2])
 
 if __name__ == '__main__':
     # load model
-    model_name = 'model_005_ckpt_epoch_37.ckpt'
+    model_name = 'model_003_ckpt_epoch_43.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('trained epoch: {}'.format(checkpoint['epoch']))
     model = Net()
@@ -130,8 +156,9 @@ if __name__ == '__main__':
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', contain_both=False, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
-    inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    # inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
