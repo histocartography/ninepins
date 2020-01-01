@@ -1,5 +1,4 @@
 from pathlib import Path
-import matplotlib.pyplot as plt  # for debugging
 import numpy as np
 import torch
 from scipy.ndimage.filters import maximum_filter, median_filter
@@ -8,12 +7,7 @@ from skimage.color import label2rgb
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.morphology import *
 from inference import shift_and_scale
-from utils import Cascade
-
-
-def show(img): # for debugging
-    plt.imshow(img)
-    plt.show()
+from utils import Cascade, show
 
 def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
     # read files or inference to get individual output

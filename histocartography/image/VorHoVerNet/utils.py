@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from skimage.io import imsave
 from scipy.ndimage.morphology import distance_transform_edt
 from collections.abc import Mapping, Iterable, Callable
@@ -154,4 +155,8 @@ def scale(img, vmax, vmin):
     img[img > 0] *= (vmax / max_)
     img[img < 0] *= (vmin / min_)
     return img
+
+def show(img):
+    plt.imshow(img)
+    plt.show()
     
