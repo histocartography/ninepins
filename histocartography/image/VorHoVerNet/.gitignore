@@ -2,12 +2,16 @@
 
 CoNSeP/*
 
-# test script
+# training results
 
+inference/*
+output/*
 *.ckpt
 *.pt
 *.pkl
 *.npy
+
+# test script
 
 test.py
 model/hover_net.py
