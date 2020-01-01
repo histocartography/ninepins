@@ -7,6 +7,7 @@ from model.vorhover_net import Net, CustomLoss
 from functools import reduce
 
 def scale(img, vmax, vmin):
+    img = img.copy()
     max_ = img.max()
     min_ = img.min()
     img[img > 0] *= (vmax / max_)
@@ -14,6 +15,7 @@ def scale(img, vmax, vmin):
     return img
 
 def shift_and_scale(img, vmax, vmin):
+    img = img.copy()
     max_ = img.max()
     min_ = img.min()
     rang = max_ - min_
