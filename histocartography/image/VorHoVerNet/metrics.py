@@ -81,12 +81,14 @@ def nucleiwise_stats(output_map, label):
 
     Under nucleiwise condition, we can only define TP, FN, and FP (and thus Precision and Sensitivity).
     Definition of TP: a nucleus in ground truth is covered by more than 70% overlapping in prediction
-    Definition of FN: (# of label nuclei) - TP
-    Definitoin of FP: (# of predicted nuclei) - TP
+    Definition of FN: (# of label nuclei) - TP (# in label)
+    Definitoin of FP: (# of predicted nuclei) - (# of hit connected components in prediction)
     """
 
     MAX_LABEL_IDX = int(label.max())
     TP = 0
+    hit = [False] * int(output_map.max())
+
     for idx in range(1, MAX_LABEL_IDX + 1):
         overlapped_indices = np.unique(output_map[label == idx])
         if len(overlapped_indices) == 0:
@@ -101,16 +103,20 @@ def nucleiwise_stats(output_map, label):
 
             if perc >= 0.7:
                 TP += 1
+                hit[overlapped_index - 1] = True
                 break
 
-    FN = MAX_LABEL_IDX - TP
-    FP = int(output_map.max()) - TP
+    TP_pred = np.count_nonzero(hit)
 
-    Precision = TP / (TP + FP)
-    Sensitivity = TP / (TP + FN)
+    FN = MAX_LABEL_IDX - TP
+    FP = len(hit) - TP_pred
+
+    Precision = TP_pred / len(hit)
+    Sensitivity = TP / MAX_LABEL_IDX
 
     return {
         'TP': TP,
+        'TP_pred': TP_pred,
         'FP': FP,
         'FN': FN,
         'Precision': Precision,
@@ -138,7 +144,7 @@ def score(output_map, label, metrics=['IOU']):
 if __name__ == "__main__":
     from pathlib import Path
     from utils import show
-    IDX = 0
+    IDX = 3
     prefix = 'out_k_0.2'
 
     output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
@@ -146,7 +152,7 @@ if __name__ == "__main__":
     from dataset_reader import CoNSeP
 
     dataset = CoNSeP(download=False)
-    label, _ = dataset.read_labels(IDX + 1, 'test')
+    label, _ = dataset.read_labels(IDX, 'test')
     label = label[95: 895, 95: 895]
 
     print(score(output_map, label, metrics=['nucleiwise']))
