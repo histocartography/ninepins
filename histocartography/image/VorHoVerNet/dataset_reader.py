@@ -42,8 +42,10 @@ class CoNSeP_local(CoNSeP_common):
         path = self.root
         if type_ == "image":
             path += f"{split.capitalize()}/Images/{split}_{idx}.png"
-        else:
+        elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
+        else:
+            path += f"{split.capitalize()}/PseudoLabels/{split}_{idx}.png"
         return path
 
     def read_image(self, idx, split):
@@ -59,6 +61,10 @@ class CoNSeP_local(CoNSeP_common):
         self.check_idx(idx, split)
         label = np.load(self.get_path(idx, split, "label"))
         return get_point_from_instance(label[..., 0], binary=True)
+
+    def read_pseudo_labels(self, idx, split):
+        self.check_idx(idx, split)
+        return imread(self.get_path(idx, split, "pseudo"))
 
     def __str__(self):
         return "CoNSeP:local;root='{}'".format(self.root)
@@ -126,6 +132,9 @@ class CoNSeP_S3(CoNSeP_common):
             x, y = map(int, center)
             point_mask[y, x] = True
         return point_mask
+
+    def read_pseudo_labels(self, idx, split):
+        raise NotImplementedError("Pseudo labels have not been uploaded to S3 yet.")
 
     def __str__(self):
         return "CoNSeP:S3;remote='{}', root='{}'".format(self.remote, self.root)
