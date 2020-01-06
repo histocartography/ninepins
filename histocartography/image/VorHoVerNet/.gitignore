@@ -18,3 +18,4 @@ model/hover_net.py
 opt.py
 config.py
 train.py
+compare.py
