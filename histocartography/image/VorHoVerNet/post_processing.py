@@ -8,13 +8,15 @@ from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.morphology import *
 from inference import shift_and_scale
 from utils import Cascade, show
+from Voronoi_label import get_voronoi_edges
+from skimage.io import imsave
 
 def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
     # read files or inference to get individual output
     if from_file:
-        seg, vet, hor = get_instance_output_from_file(*args, **kwargs)
+        seg, vet, hor = get_output_from_file(*args, **kwargs)
     else:
-        seg, vet, hor = get_instance_output_from_model(*args, **kwargs)
+        seg, vet, hor = get_output_from_model(*args, **kwargs)
 
     # pre-process the output maps
     vet = shift_and_scale(vet, 1, 0)
@@ -62,7 +64,7 @@ def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
 
     return res
 
-def get_instance_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='model_003_ckpt_epoch_43', prefix='patch', patchsize=270, validsize=80, imagesize=1000):
+def get_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='model_003_ckpt_epoch_43', prefix='patch', patchsize=270, validsize=80, imagesize=1000):
     """
     idx: index of image in dataset
     """
@@ -82,7 +84,7 @@ def get_instance_output_from_file(idx, use_patch_idx=False, root='./inference', 
 
         rows = int((h - patchsize) / validsize + 1)
         cols = int((w - patchsize) / validsize + 1)
-        base = idx * rows * cols
+        base = (idx - 1) * rows * cols
 
         wholesize = (validsize * rows, validsize * cols)
 
@@ -103,7 +105,7 @@ def get_instance_output_from_file(idx, use_patch_idx=False, root='./inference', 
 
         return seg, vet, hor
 
-def get_instance_output_from_model(img, model):
+def get_output_from_model(img, model):
     model.eval()
     with torch.no_grad():
         pred = model(img)
@@ -131,7 +133,7 @@ def get_original_image_from_file(idx, use_patch_idx=False, root='./inference', c
 
         rows = int((h - patchsize) / validsize + 1)
         cols = int((w - patchsize) / validsize + 1)
-        base = idx * rows * cols
+        base = (idx - 1) * rows * cols
 
         wholesize = (validsize * rows, validsize * cols, 3)
 
@@ -146,12 +148,94 @@ def get_original_image_from_file(idx, use_patch_idx=False, root='./inference', c
 
         return img
 
-if __name__ == "__main__":
+def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=0.5):
+    pred_seg = pred_seg > h
+    out_dict = {}
+    edges = get_voronoi_edges(point_mask, extra_out=out_dict)
+    color_map = out_dict['Voronoi_cell']
+
+    # improve segmentation label
+    new_seg = np.zeros_like(pred_seg)
+
+    labeled_pred_seg = label(pred_seg)
+    labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+    point_label = label(point_mask)
+    MAX_POINT_IDX = int(point_label.max())
+    for idx in range(1, MAX_POINT_IDX + 1):
+        pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+        if pred_cc_on_idx != 0:
+            new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+        else:
+            curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+            if curr_cc_on_idx != 0:
+                new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+
+    # => new_seg
+
+    # ======================================================
+
+    # improve color cell map (for distance map label)
+
+    # pre-process the output maps
+    vet = shift_and_scale(pred_vet, 1, 0)
+    hor = shift_and_scale(pred_hor, 1, 0)
+
+    #   generate distance map
+    grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
+    sig_diff = np.maximum(grad_vet, grad_hor)
+    sig_diff = Cascade() \
+                    .append(maximum_filter, size=3) \
+                    .append(median_filter, size=3) \
+                    (sig_diff)
+    sig_diff[~pred_seg] = 0
+    
+    # show(sig_diff)
+    # show(point_label)
+    dilated_point_mask = binary_dilation(point_mask, disk(1))
+
+    #   run watershed on distance map with markers
+    new_cell = watershed(new_seg, markers=point_label, mask=new_seg)
+
+    rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
+
+    #   re-fill the segmentation parts not in new_cell but in new segmentation
+    imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
+    imsave('new_seg.png', new_seg.astype(np.uint8) * 255)
+    imsave('pred_seg.png', pred_seg.astype(np.uint8) * 255)
+    imsave('new_cell.png', rgb_new_cell)
+
+    #       get (new segmentation mask) - (new_cell)
+    not_in_new_cell = new_seg & (new_cell == 0)
+
+    #       separate nuclei with Voronoi edges and label them
+    not_in_new_cell[edges == 255] = False
+    not_in_new_cell = label(not_in_new_cell)
+
+    #       add back to new_cell
+    offset = int(new_cell.max())
+    not_in_new_cell += offset
+    not_in_new_cell[not_in_new_cell == offset] = 0
+    new_cell = new_cell + not_in_new_cell
+
+    #   filter out connected components which do not cover any point
+    for cell in range(1, int(new_cell.max()) + 1):
+        if np.count_nonzero((new_cell == cell) & point_mask) == 0:
+            new_cell[new_cell == cell] = 0
+
+    # => new_cell
+
+    rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
+    rgb_new_cell[dilated_point_mask] = [255, 255, 255]
+
+    imsave('new_cell1.png', rgb_new_cell)
+
+def test_instance_output():
     from skimage.io import imsave
 
     prefix = 'output/out_k_0.2'
 
-    for IDX in range(14):
+    for IDX in range(1, 15):
         res = get_instance_output(True, IDX, k=0.2, use_patch_idx=False)
         img = get_original_image_from_file(IDX, use_patch_idx=False)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
@@ -161,10 +245,34 @@ if __name__ == "__main__":
 
         res[gd == 0] = 0
 
-        rgbres = (label2rgb(res) * 255).astype(np.uint8)
+        rgbres = (label2rgb(res, bg_label=0) * 255).astype(np.uint8)
         
         res = res[..., None]
         res = np.concatenate((res, res, res), axis=2)
         img = np.where(res == 0, img, rgbres).astype(np.uint8)
 
         imsave('{}_{}.png'.format(prefix, IDX), img)
+
+def test_improve_pseudo_labels():
+    from dataset_reader import CoNSeP
+    from utils import get_valid_view
+
+    IDX = 2
+    SPLIT = 'test'
+
+    dataset = CoNSeP(download=False)
+
+    current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
+    current_seg_mask = current_seg_mask > 0
+    current_seg_mask = get_valid_view(current_seg_mask)
+
+    point_label = dataset.read_points(IDX, SPLIT)
+    point_label = get_valid_view(point_label)
+
+    seg, vet, hor = get_output_from_file(IDX)
+
+    improve_pseudo_labels(current_seg_mask, point_label, seg, vet, hor)
+
+if __name__ == "__main__":
+    # test_instance_output()
+    test_improve_pseudo_labels()

@@ -130,7 +130,7 @@ VALID_METRICS = {
     'nucleiwise': nucleiwise_stats
 }
 
-def score(output_map, label, metrics=['IOU']):
+def score(output_map, label, *metrics):
     res = {}
     for metric in metrics:
         try:
@@ -143,7 +143,7 @@ def score(output_map, label, metrics=['IOU']):
 
 if __name__ == "__main__":
     from pathlib import Path
-    from utils import show
+    from utils import show, get_valid_view
     IDX = 3
     prefix = 'out_k_0.2'
 
@@ -153,6 +153,6 @@ if __name__ == "__main__":
 
     dataset = CoNSeP(download=False)
     label, _ = dataset.read_labels(IDX, 'test')
-    label = label[95: 895, 95: 895]
+    label = get_valid_view(label)
 
-    print(score(output_map, label, metrics=['nucleiwise']))
+    print(score(output_map, label, 'nucleiwise', 'IOU'))

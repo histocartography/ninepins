@@ -149,6 +149,15 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
     gradient = get_gradient(mask)
     image[gradient > 0] = color
 
+def get_valid_view(image, patch_size=270, valid_size=80):
+    h, w = image.shape[:2]
+    offset = (patch_size - valid_size) // 2
+    rows = int((h - patch_size) / valid_size + 1)
+    cols = int((w - patch_size) / valid_size + 1)
+    y_end = offset + rows * valid_size
+    x_end = offset + cols * valid_size
+    return image[offset: y_end, offset: x_end, ...]
+
 def scale(img, vmax, vmin):
     max_ = img.max()
     min_ = img.min() if img.min() != 0 else 1
