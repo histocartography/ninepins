@@ -200,10 +200,10 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
 
     #   re-fill the segmentation parts not in new_cell but in new segmentation
-    imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
-    imsave('new_seg.png', new_seg.astype(np.uint8) * 255)
-    imsave('pred_seg.png', pred_seg.astype(np.uint8) * 255)
-    imsave('new_cell.png', rgb_new_cell)
+    # imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
+    # imsave('new_seg.png', new_seg.astype(np.uint8) * 255)
+    # imsave('pred_seg.png', pred_seg.astype(np.uint8) * 255)
+    # imsave('new_cell.png', rgb_new_cell)
 
     #       get (new segmentation mask) - (new_cell)
     not_in_new_cell = new_seg & (new_cell == 0)
@@ -228,7 +228,9 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
     rgb_new_cell[dilated_point_mask] = [255, 255, 255]
 
-    imsave('new_cell1.png', rgb_new_cell)
+    # imsave('new_cell1.png', rgb_new_cell)
+
+    return new_seg, new_cell
 
 def test_instance_output():
     from skimage.io import imsave
@@ -266,12 +268,12 @@ def test_improve_pseudo_labels():
     current_seg_mask = current_seg_mask > 0
     current_seg_mask = get_valid_view(current_seg_mask)
 
-    point_label = dataset.read_points(IDX, SPLIT)
-    point_label = get_valid_view(point_label)
+    point_mask = dataset.read_points(IDX, SPLIT)
+    point_mask = get_valid_view(point_mask)
 
     seg, vet, hor = get_output_from_file(IDX)
 
-    improve_pseudo_labels(current_seg_mask, point_label, seg, vet, hor)
+    new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
 
 if __name__ == "__main__":
     # test_instance_output()
