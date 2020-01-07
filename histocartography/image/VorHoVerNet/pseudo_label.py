@@ -5,24 +5,28 @@ from skimage.morphology import label, dilation, disk, binary_dilation
 from performance import OutTime
 import numpy as np
 
-def gen_pseudo_label(image, point_mask, typed_point_map, v2=False, return_edge=False):
+def gen_pseudo_label(image, point_mask, return_edge=False):
     """
     Generate pseudo label from image and instance label.
     1. Generate distance based label.
     2. Generate color based label.
     3. Combine these two labels.
-    @image: image.
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @Return: pseudo label.
+    Args:
+        image (numpy.ndarray[uint8]): image.
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+        return_edge (bool): whether to also return edges.
+    Returns:
+        pseudo_label (numpy.ndarray[bool]) /
+        (tuple)
+            pseudo_label (numpy.ndarray[bool])
+            edges (numpy.ndarray[int])
+            if return_edge
     """
 
     out_dict = {}
 
     distance_based_label = get_voronoi_edges(point_mask, extra_out=out_dict)
-    if v2:
-        color_based_label = get_cluster_label_v2(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label, typed_point_map)
-    else:
-        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label)
+    color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label)
 
     nuclei = (color_based_label == [0, 255, 0]).all(axis=2)
 
@@ -58,8 +62,6 @@ if __name__ == "__main__":
                         help="index of the image in dataset")
     parser.add_argument("-s", "--split", default="test", choices=["test", "train"],
                         help="split of the dataset ([test, train])")
-    parser.add_argument("-m", "--masked-clustering", default=False, action="store_true",
-                        help="use masked images to do clustering")
     args = parser.parse_args()
 
     IDX = args.index
@@ -68,14 +70,14 @@ if __name__ == "__main__":
 
     dataset = CoNSeP(download=False)
     ori = dataset.read_image(IDX, SPLIT)
-    # point_mask = dataset.read_points(IDX, SPLIT)
-    lab, type_ = dataset.read_labels(IDX, SPLIT)
-    point_mask = get_point_from_instance(lab, binary=True)
+    point_mask = dataset.read_points(IDX, SPLIT)
+    # lab, type_ = dataset.read_labels(IDX, SPLIT)
+    # point_mask = get_point_from_instance(lab, binary=True)
 
     from skimage.io import imsave
 
     with OutTime():
-        label = gen_pseudo_label(ori, point_mask, np.where(point_mask, type_, 0), v2=args.masked_clustering)
+        label = gen_pseudo_label(ori, point_mask)
         draw_boundaries(ori, label)
     point_mask = binary_dilation(point_mask, disk(3))
     # point_mask = np.where(point_mask, 255, 0)

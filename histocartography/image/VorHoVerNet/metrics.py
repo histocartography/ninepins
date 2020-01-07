@@ -2,7 +2,14 @@ import numpy as np
 
 def overall_IOU(output_map, label):
     """
-    label needs to be cropped first to fit the valid size of the model.
+    Compute overall IOU of model output and label.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        IOU (float)
+
+    NOTE: label needs to be cropped first to fit the valid size of the model.
     """
     seg_map = output_map != 0
     seg_label = label != 0
@@ -14,7 +21,16 @@ def overall_IOU(output_map, label):
 
 def average_IOU(output_map, label):
     """
-    label needs to be cropped first to fit the valid size of the model.
+    Compute IOU of model output and label averaged over annotated nuclei.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        avgIOU (float)
+        
+    Definition of matched nuclei:
+        nuclei exist both in model output and label, and have more than 50% overlap.
+    NOTE: label needs to be cropped first to fit the valid size of the model.
     """
     MAX_LABEL_IDX = int(label.max())
     IOUs = []
@@ -40,7 +56,24 @@ def average_IOU(output_map, label):
 
 def pixelwise_stats(output_map, label):
     """
-    label needs to be cropped first to fit the valid size of the model.
+    Compute pixel-wise statistics of model output and label.
+    Accuracy, Precision, Sensitivity, and Specificity.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        (dict)
+            'TP' (int): True Positive
+            'TN' (int): True Negative
+            'FP' (int): False Positive
+            'FN' (int): False Negative
+            'ALL' (int): number of all pixels
+            'Accuracy' (float): accuracy
+            'Precision' (float): precision
+            'Sensitivity (float)': sensitivity
+            'Specificity' (float): specificity
+        
+    NOTE: label needs to be cropped first to fit the valid size of the model.
     """
     seg_map = output_map != 0
     seg_label = label != 0
@@ -56,7 +89,7 @@ def pixelwise_stats(output_map, label):
     FN = np.count_nonzero(PN & LP)
     ALL = seg_map.size
 
-    ACC = (TP + TN) / ALL
+    Accuracy = (TP + TN) / ALL
     Precision = TP / (TP + FP)
     Sensitivity = TP / (TP + FN)
     Specificity = TN / (FP + TN)
@@ -67,7 +100,7 @@ def pixelwise_stats(output_map, label):
         'FP': FP,
         'FN': FN,
         'ALL': ALL,
-        'ACC': ACC,
+        'Accuracy': Accuracy,
         'Precision': Precision,
         'Sensitivity': Sensitivity,
         'Specificity': Specificity
@@ -75,14 +108,32 @@ def pixelwise_stats(output_map, label):
     
     return stats(TP, TN, FP, FN, ALL)
 
-def nucleiwise_stats(output_map, label):
+def nucleuswise_stats(output_map, label):
     """
-    label needs to be cropped first to fit the valid size of the model.
+    Compute nucleus-wise statistics of model output and label.
+    Sensitivity, and Specificity.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        (dict)
+            'TP' (int): True Positive (annotation)
+            'TP_pred' (int): True Positive (prediction)
+            'FP' (int): False Positive
+            'FN' (int): False Negative
+            'Precision' (float): precision
+            'Sensitivity (float)': sensitivity
 
-    Under nucleiwise condition, we can only define TP, FN, and FP (and thus Precision and Sensitivity).
-    Definition of TP: a nucleus in ground truth is covered by more than 70% overlapping in prediction
-    Definition of FN: (# of label nuclei) - TP (# in label)
-    Definitoin of FP: (# of predicted nuclei) - (# of hit connected components in prediction)
+    Under nucleus-wise condition, we can only define TP, FN, and FP (and thus Precision and Sensitivity).
+    Definition of TP:
+        # of annotated nuclei covered by a predicted nucleus with more than 70% overlap
+        NOTE: # is different in model output and label,
+            since one nucleus in prediction could cover multiple nuclei in label and vice versa.
+    Definition of FN:
+        (# of annotated nuclei) - TP (# in label)
+    Definitoin of FP:
+        (# of predicted nuclei) - TP (# in prediction)
+    NOTE: label needs to be cropped first to fit the valid size of the model.
     """
 
     MAX_LABEL_IDX = int(label.max())
@@ -123,6 +174,7 @@ def nucleiwise_stats(output_map, label):
         'Sensitivity': Sensitivity
     }
 
+# Mapping from metrics name to computation function
 VALID_METRICS = {
     'IOU': overall_IOU,
     'avgIOU': average_IOU,
@@ -131,6 +183,17 @@ VALID_METRICS = {
 }
 
 def score(output_map, label, *metrics):
+    """
+    Compute requested metrics of model output and label.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+        metrics (list[str]): metrics names
+    Returns:
+        (dict)
+            metrics_name (str): metrics value
+            ...
+    """
     res = {}
     for metric in metrics:
         try:

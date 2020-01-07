@@ -1,30 +1,26 @@
 import os
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-from dataset import CoNSeP_cropped, data_reader
-from model.vorhover_net import Net, CustomLoss
 from functools import reduce
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+from skimage.io import imsave
+from dataset import CoNSeP_cropped, data_reader
+from model.vorhover_net import CustomLoss, Net
+from utils import scale, shift_and_scale
 
-def scale(img, vmax, vmin):
-    img = img.copy()
-    max_ = img.max()
-    min_ = img.min()
-    img[img > 0] *= (vmax / max_)
-    img[img < 0] *= (vmin / min_)
-    return img
-
-def shift_and_scale(img, vmax, vmin):
-    img = img.copy()
-    max_ = img.max()
-    min_ = img.min()
-    rang = max_ - min_
-    vrang = vmax - vmin
-    img -= (min_ - vmin)
-    img *= (vrang / rang)
-    return img
 
 def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
+    """
+    Run massive inference on given model with provided data.
+    Combine the output with annotations to form a plot for comparison.
+    Args:
+        model (torch.nn.Module): the model.
+        data_loader (torch.nn.DataLoader): the data loader to retrieve data from.
+        figpath_fix (str): the name of the folder to store the figures.
+        gap (int): the offset between the origins of input image and output.
+        psize (int): the size of input image patch. If gap is set, this is ignored.
+        vsize (int): the size of output patch. If gap is set, this is ignored.
+    """
     import matplotlib
     matplotlib.use('Agg')
 
@@ -94,7 +90,17 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     plt.close()
 
 def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
-    from skimage.io import imsave
+    """
+    Run massive inference on given model with provided data.
+    Save individual result into files.
+    Args:
+        model (torch.nn.Module): the model.
+        data_loader (torch.nn.DataLoader): the data loader to retrieve data from.
+        figpath_fix (str): the name of the folder to store the figures.
+        gap (int): the offset between the origins of input image and output.
+        psize (int): the size of input image patch. If gap is set, this is ignored.
+        vsize (int): the size of output patch. If gap is set, this is ignored.
+    """
     
     os.makedirs('./inference/{}'.format(figpath_fix), exist_ok=True)
 

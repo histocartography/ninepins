@@ -14,6 +14,10 @@ class CoNSeP:
     Interface for different CoNSeP datasets.
     """
     def __new__(cls, *args, download=True, **kwargs):
+        """
+        If download is True, return a S3 version instance.
+        Otherwise, return a local version instance.
+        """
         if download:
             return CoNSeP_S3(*args, **kwargs)
         else:
@@ -29,7 +33,16 @@ class CoNSeP_common:
         raise NotImplementedError("This is an abstract base class.")
 
     def check_idx(self, idx, split):
+        """
+        Check whether an index is within the limit of a dataset split.
+        """
         assert 1 <= idx <= self.IDX_LIMITS[split], f"Invalid index {idx} for split {split}."
+
+    def __str__(self):
+        raise NotImplementedError("This is an abstract base class.")
+
+    def __repr__(self):
+        return str(self)
 
 class CoNSeP_local(CoNSeP_common):
     """
@@ -39,6 +52,11 @@ class CoNSeP_local(CoNSeP_common):
         self.root = root
 
     def get_path(self, idx, split, type_):
+        """
+        Return the path for the requested data.
+        Returns:
+            path (str)
+        """
         path = self.root
         if type_ == "image":
             path += f"{split.capitalize()}/Images/{split}_{idx}.png"
@@ -49,28 +67,50 @@ class CoNSeP_local(CoNSeP_common):
         return path
 
     def read_image(self, idx, split):
+        """
+        Read an input image from dataset.
+        Returns:
+            image (numpy.ndarray[uint8])
+        """
         self.check_idx(idx, split)
         return imread(self.get_path(idx, split, "image"))[..., :3]
 
     def read_labels(self, idx, split):
+        """
+        Read instance map label and type map label from dataset.
+        Returns:
+            (tuple)
+                instance map (numpy.ndarray[int])
+                type map (numpy.ndarray[int])
+        """
         self.check_idx(idx, split)
         label = np.load(self.get_path(idx, split, "label"))
         return label[..., 0], label[..., 1]
 
     def read_points(self, idx, split):
+        """
+        Read point map label from dataset.
+        Returns:
+            point_map (numpy.ndarray[bool])
+        """
         self.check_idx(idx, split)
         label = np.load(self.get_path(idx, split, "label"))
         return get_point_from_instance(label[..., 0], binary=True)
 
     def read_pseudo_labels(self, idx, split):
+        """
+        Read pseudo segmentation label from dataset.
+        Returns:
+            pseudo_label (numpy.ndarray[uint8])
+        """
         self.check_idx(idx, split)
         return imread(self.get_path(idx, split, "pseudo"))
 
     def __str__(self):
+        """
+        String representation of the object.
+        """
         return "CoNSeP:local;root='{}'".format(self.root)
-
-    def __repr__(self):
-        return str(self)
 
 class CoNSeP_S3(CoNSeP_common):
     """
@@ -85,6 +125,11 @@ class CoNSeP_S3(CoNSeP_common):
         self.remote = remote
 
     def get_path(self, idx, split, type_):
+        """
+        Return the path for the requested data.
+        Returns:
+            path (str)
+        """
         path = self.root
         if type_ == "image":
             path += f"{split}_data/{split}_{idx}.png"
@@ -93,6 +138,11 @@ class CoNSeP_S3(CoNSeP_common):
         return path
 
     def convert_image(self, obj):
+        """
+        Convert S3 object into numpy array format.
+        Returns:
+            converted_image (numpy.ndarray[uint8])
+        """
         buffer = BytesIO()
         for d in obj.stream():
             buffer.write(d)
@@ -100,6 +150,11 @@ class CoNSeP_S3(CoNSeP_common):
         return np.array(img)
 
     def convert_labels(self, obj):
+        """
+        Convert S3 object into JSON-like dictionary format.
+        Returns:
+            converted_label (dict)
+        """
         buffer = BytesIO()
         for d in obj.stream():
             buffer.write(d)
@@ -108,11 +163,23 @@ class CoNSeP_S3(CoNSeP_common):
         return j
 
     def read_image(self, idx, split):
+        """
+        Read an input image from dataset.
+        Returns:
+            image (numpy.ndarray[uint8])
+        """
         self.check_idx(idx, split)
         obj = self.minioClient.get_object("curated-datasets", self.get_path(idx, split, "image"))
         return self.convert_image(obj)
 
     def read_labels(self, idx, split):
+        """
+        Read instance map label and type map label from dataset.
+        Returns:
+            (tuple)
+                instance map (numpy.ndarray[int])
+                type map (numpy.ndarray[int])
+        """
         self.check_idx(idx, split)
         obj = self.minioClient.get_object("curated-datasets", self.get_path(idx, split, "label"))
         label = self.convert_labels(obj)
@@ -124,6 +191,11 @@ class CoNSeP_S3(CoNSeP_common):
         return instance_map, type_map
 
     def read_points(self, idx, split):
+        """
+        Read point map label from dataset.
+        Returns:
+            point_map (numpy.ndarray[bool])
+        """
         self.check_idx(idx, split)
         obj = self.minioClient.get_object("curated-datasets", self.get_path(idx, split, "label"))
         label = self.convert_labels(obj)
@@ -134,10 +206,16 @@ class CoNSeP_S3(CoNSeP_common):
         return point_mask
 
     def read_pseudo_labels(self, idx, split):
+        """
+        Read pseudo segmentation label from dataset.
+        Returns:
+            pseudo_label (numpy.ndarray[uint8])
+        TODO: implement this.
+        """
         raise NotImplementedError("Pseudo labels have not been uploaded to S3 yet.")
 
     def __str__(self):
+        """
+        String representation of the object.
+        """
         return "CoNSeP:S3;remote='{}', root='{}'".format(self.remote, self.root)
-
-    def __repr__(self):
-        return str(self)
