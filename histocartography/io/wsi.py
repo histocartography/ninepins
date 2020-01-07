@@ -485,7 +485,7 @@ class WSI:
         y_positions = np.arange(origin[1], full_height - vert_step, vert_step)
         xy_positions = list(itertools.product(x_positions, y_positions)) 
         
-        log.debug(xy_positions)
+        #log.debug(xy_positions)
         log.debug('Level for desired resolution : %s', level)
         log.debug('Step size : %s %s', horiz_step, vert_step)
 
