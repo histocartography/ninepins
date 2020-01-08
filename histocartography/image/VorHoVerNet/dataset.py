@@ -3,6 +3,18 @@ from skimage.io import imread
 from torch.utils.data import Dataset
 from dataset_reader import *
 
+def flip_image(img, flip):
+    """
+    Generate three other images through flip.
+    """
+    if flip == 1:
+        return np.flip(img, 0)
+    elif flip == 2:
+        return np.flip(img, 1)
+    elif flip == 3:
+        return np.flip(img, (0, 1))
+    return img.copy()
+
 def gen_pseudo_masks(root='./CoNSeP/', split='train', contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
@@ -24,36 +36,44 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', contain_both=False):
     
     for i in range(1, IDX_LIMITS[split] + 1):
         print('Generating {} dataset... {:02d}/{:02d}'.format(split, i, IDX_LIMITS[split]), end='\r')
+        
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
-        point_mask = get_point_from_instance(lab, binary=True)
+        point_mask = data_reader.read_points(i, split)
         
         # get cluster masks
         seg_mask, edges = gen_pseudo_label(ori, point_mask, np.where(point_mask, type_, 0), v2=False, return_edge=True)
         seg_mask_w_edges = seg_mask & (edges == 0)
 
         # generate distance maps
-        point_mask = data_reader.read_points(i, split)
-        v_map, h_map = get_distancemaps(point_mask, seg_mask)
-        pseudo_mask = np.stack((seg_mask.astype(np.float32), v_map, h_map), axis=-1)
-        if contain_both:
-            seg_gt = np.where(lab > 0, 1, 0)
-            v_map, h_map = get_distancemaps(None, lab, use_full_mask=True)
-            full_mask = np.stack((seg_gt.astype(np.float32), v_map, h_map), axis=-1)
+        for flip in range(4):
+            # generate flipped images
+            lab_, seg_mask_w_edges_, point_mask_ = [flip_image(tar, flip) for tar in [lab, seg_mask_w_edges, point_mask]]
+            
+            # morror padding (1000x1000 to 1230x1230, 95 at left and top, 135 at right and bottom)
+            lab_, seg_mask_w_edges_, point_mask_ = [np.pad(tar, ((95, 135), (95, 135)), mode='reflect') for tar in [lab_, seg_mask_w_edges_, point_mask_]]
 
-        # save npy file (and png file for visualization)
-        path_pseudo = '{}/{}/PseudoLabels'.format(root, split.capitalize())
-        os.makedirs(path_pseudo, exist_ok=True)
-        imsave('{}/{}_{}.png'.format(path_pseudo, split, i), seg_mask.astype(np.uint8) * 255)
-        np.save('{}/{}_{}.npy'.format(path_pseudo, split, i), pseudo_mask)
-        if contain_both:
-            path_full = '{}/{}/FullLabels'.format(root, split.capitalize())
-            os.makedirs(path_full, exist_ok=True)
-            imsave('{}/{}_{}.png'.format(path_full, split, i), seg_gt.astype(np.uint8) * 255)
-            np.save('{}/{}_{}.npy'.format(path_full, split, i), full_mask)
+            # get distance map
+            h_map, v_map = get_distancemaps(point_mask_, seg_mask_w_edges_)
+            pseudo_mask = np.stack((seg_mask_w_edges_.astype(np.float32), h_map, v_map), axis=-1)
+            if contain_both:
+                seg_gt = np.where(lab_ > 0, 1, 0)
+                h_map, v_map = get_distancemaps(None, lab_, use_full_mask=True)
+                full_mask = np.stack((seg_gt.astype(np.float32), h_map, v_map), axis=-1)
+
+            # save npy file (and png file for visualization)
+            path_pseudo = '{}/{}/PseudoLabels'.format(root, split.capitalize())
+            os.makedirs(path_pseudo, exist_ok=True)
+            imsave('{}/{}_{}_{}.png'.format(path_pseudo, split, i, flip), seg_mask_w_edges_.astype(np.uint8) * 255)
+            np.save('{}/{}_{}_{}.npy'.format(path_pseudo, split, i, flip), pseudo_mask)
+            if contain_both:
+                path_full = '{}/{}/FullLabels'.format(root, split.capitalize())
+                os.makedirs(path_full, exist_ok=True)
+                imsave('{}/{}_{}_{}.png'.format(path_full, split, i, flip), seg_gt.astype(np.uint8) * 255)
+                np.save('{}/{}_{}_{}.npy'.format(path_full, split, i, flip), full_mask)
     print('')
 
-def data_reader(root=None, split='train', channel_first=True, contain_both=False, part=None):
+def data_reader(root=None, split='train', channel_first=True, doflip=False, contain_both=False, part=None):
     """
     Return images and labels according to the type from split
 
@@ -67,7 +87,7 @@ def data_reader(root=None, split='train', channel_first=True, contain_both=False
     Returns:
         (tuple):
             images (numpy.ndarray)
-            labels (numpy.ndarray) / (dict contain two numpy.ndarray if contain_both=True)
+            labels (numpy.ndarray)
     """
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
     IDX_LIMITS = data_reader.IDX_LIMITS
@@ -80,20 +100,26 @@ def data_reader(root=None, split='train', channel_first=True, contain_both=False
     for i, idx in enumerate(indice):
         print('Loading {} dataset... {:02d}/{:02d}'.format(split, i + 1, len(indice)), end='\r')
         # original image
-        images.append(data_reader.read_image(idx, split) / 255)
+        image = data_reader.read_image(idx, split) / 255
 
-        # pseudo labels
-        fulllabel_path = data_reader.get_path(idx, split, 'label')
-        pseudolabel_path = fulllabel_path.replace('Labels', 'PseudoLabels')
-        pseudolabels = np.load(pseudolabel_path)
+        label_path = data_reader.get_path(idx, split, 'label')
+        flip_idx = range(4) if doflip else (0, )
+        for flip in flip_idx:
+            image_ = flip_image(image, flip)
+            image_ = np.pad(image_, ((95, 135), (95, 135), (0, 0)), mode='reflect')
+            images.append(image_)
 
-        # full labels (optional)
-        if contain_both:
-            fulllabel_path = fulllabel_path.replace('Labels', 'FullLabels')
-            fulllabels = np.load(fulllabel_path)
-            labels.append(np.concatenate((pseudolabels, fulllabels), axis=-1))
-        else:
-            labels.append(pseudolabels)
+            # pseudo labels
+            pseudolabel_path = label_path.replace('Labels', 'PseudoLabels').replace('.npy', '_{}.npy'.format(flip))
+            pseudolabels = np.load(pseudolabel_path)
+
+            # full labels (optional)
+            if contain_both:
+                fulllabel_path = label_path.replace('Labels', 'FullLabels').replace('.npy', '_{}.npy'.format(flip))
+                fulllabels = np.load(fulllabel_path)
+                labels.append(np.concatenate((pseudolabels, fulllabels), axis=-1))
+            else:
+                labels.append(pseudolabels)
     print('')
     return images, labels
 
@@ -178,6 +204,8 @@ class CoNSeP_cropped(Dataset):
         for i, (img, lbls) in enumerate(zip(self.images, self.labels)):
             print('Cropping dataset... {:02d}/{:02d}'.format(i + 1, len(self.images)), end='\r')
             height, width = img.shape[:2]
+            # img = np.pad(img, ((gap, gap), (gap, gap), (0, 0)), mode='reflect')
+            # height, width = img.shape[:2]
             for h in range(0, height, self.validsize):
                 for w in range(0, width, self.validsize):
                     if h + self.patchsize <= height and w + self.patchsize <= width:

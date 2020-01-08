@@ -149,8 +149,8 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
     image[gradient > 0] = color
 
 def scale(img, vmax, vmin):
-    max_ = img.max()
-    min_ = img.min() if img.min() != 0 else 1
+    max_ = img.max() + 1.0e-8
+    min_ = img.min() + 1.0e-8
     img[img > 0] *= (vmax / max_)
     img[img < 0] *= (vmin / min_)
     return img

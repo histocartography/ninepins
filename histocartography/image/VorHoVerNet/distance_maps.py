@@ -31,7 +31,7 @@ def area_vhmap(img):
     v_map[img == 0] = 0
     h_map[img == 0] = 0
     
-    return v_map, h_map
+    return h_map, v_map
 
 def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
     seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
@@ -45,7 +45,7 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
         colormap = maps['Voronoi_cell']
     
     # instance masks from colormap
-    v_map, h_map = [np.zeros_like(seg_mask, dtype=np.float32) for _ in range(2)]
+    h_map, v_map = [np.zeros_like(seg_mask, dtype=np.float32) for _ in range(2)]
     to_idx = int(colormap.max()) + 1
     from_idx = int(colormap.min()) + 1
     for i in range(from_idx, to_idx):
@@ -53,4 +53,4 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
         v_map += vm
         h_map += hm
         
-    return v_map, h_map
+    return h_map, v_map
