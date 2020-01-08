@@ -7,33 +7,33 @@ from skimage.color import label2rgb
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.io import imread, imsave
 from skimage.morphology import *
-from inference import shift_and_scale
-from utils import Cascade, show
+from utils import Cascade, show, scale, shift_and_scale
 from Voronoi_label import get_voronoi_edges
 
+def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
+    image[seg <= th] = 0
+    image = scale(image, vmax, vmin)
+    return image
 
-def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
+DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
+
+def _get_instance_output(seg, vet, hor, h=0.5, k=0.05):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
-        from_file (bool): read model output from file? Otherwise, obtain by feeding input into model.
-        args (list[any]): arguments for get_output_from_*.
-        h (float): threshold for the output map.
-        k (float): threshold for the distance map.
-        kwargs (dict[str: any]): keyword arguments for get_output_from_*.
+        seg (numpy.ndarray[float]): segmentation output.
+        vet (numpy.ndarray[float]): vertical distance map output.
+        hor (numpy.ndarray[float]): horizontal distance map output.
     Returns:
         instance_map (numpy.ndarray[int]): instance map
     """
-    """read files or inference to get individual output"""
-    if from_file:
-        seg, vet, hor = get_output_from_file(*args, **kwargs)
-    else:
-        seg, vet, hor = get_output_from_model(*args, **kwargs)
-
     """pre-process the output maps"""
-    vet = shift_and_scale(vet, 1, 0)
-    hor = shift_and_scale(hor, 1, 0)
     th_seg = seg > h
+    th_seg = Cascade() \
+                .append(binary_opening, disk(3)) \
+                (th_seg)
+
+    # show(th_seg)
 
     """combine the output maps"""
 
@@ -41,25 +41,31 @@ def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
     grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
     grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
     sig_diff = np.maximum(grad_vet, grad_hor)
+    # sig_diff = gaussian(sig_diff)
     sig_diff = Cascade() \
                     .append(maximum_filter, size=3) \
                     .append(median_filter, size=3) \
                     (sig_diff)
     sig_diff[~th_seg] = 0
     
+    # show(vet)
+    # show(hor)
     # show(sig_diff)
 
     """ - generate markers"""
+    if k == 'adapt':
+        k = sig_diff.mean()
     markers = th_seg & (sig_diff <= k)
     # intermediate_prefix='markers/m'
     markers = Cascade() \
                     .append(binary_dilation, disk(3)) \
                     .append(binary_fill_holes) \
                     .append(binary_erosion, disk(3)) \
-                    .append(remove_small_objects, min_size=5) \
                     (markers)
+                    # .append(remove_small_objects, min_size=5) \
     markers = label(markers)
     
+    # show(th_seg)
     # show(markers)
 
     """ - run watershed on distance map with markers"""
@@ -75,11 +81,42 @@ def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
 
     return res
 
-def get_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='model_003_ckpt_epoch_43', prefix='patch', patchsize=270, validsize=80, imagesize=1000):
+def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
+    """
+    Combine model output values from three branches into instance segmentation.
+    Args:
+        from_file (bool): read model output from file? Otherwise, obtain by feeding input into model.
+        args (list[any]): arguments for get_output_from_*.
+        h (float): threshold for the output map.
+        k (float): threshold for the distance map.
+        kwargs (dict[str: any]): keyword arguments for get_output_from_*.
+    Returns:
+        instance_map (numpy.ndarray[int]): instance map
+    """
+    """read files or inference to get individual output"""
+    if from_file:
+        seg, vet, hor = get_output_from_file(*args,
+                            transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
+    else:
+        seg, vet, hor = get_output_from_model(*args,
+                            transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
+
+    return _get_instance_output(seg, vet, hor, h=h, k=k)
+
+def get_output_from_file(idx,
+                        transform=None, use_patch_idx=False,
+                        root='./inference', ckpt='model_003_ckpt_epoch_43',
+                        prefix='patch', patchsize=270, validsize=80, imagesize=1000):
     """
     Read output from file.
     Args:
         idx (int): index of image in dataset.
+        transform (callable{
+            [numpy.ndarray(float), numpy.ndarray(float)]
+            => numpy.ndarray(float)
+        } / None):
+            the transformation function to apply on distance maps after reading.
+            Nothing would be done if set to None.
         use_patch_idx (bool): treat the index as patch index instead.
         root (str): root directory of the output files.
         ckpt (str): name of the checkpoint used to generate the output.
@@ -99,9 +136,13 @@ def get_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='mod
 
     if use_patch_idx:
         from_dir = root / ckpt / "{}{:04d}".format(prefix, idx)
-        return np.load(str(from_dir / "seg.npy")), \
-                np.load(str(from_dir / "dist1.npy")), \
-                np.load(str(from_dir / "dist2.npy"))
+        seg = np.load(str(from_dir / "seg.npy"))
+        vet = np.load(str(from_dir / "dist1.npy"))
+        hor = np.load(str(from_dir / "dist2.npy"))
+        if transform is not None:
+            vet = transform(vet, seg)
+            hor = transform(hor, seg)
+        return seg, vet, hor
     else:
         if isinstance(imagesize, int):
             imagesize = (imagesize, imagesize)
@@ -119,10 +160,15 @@ def get_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='mod
 
         for i in range(rows):
             for j in range(cols):
-                from_dir = root / ckpt / "{}{:04d}".format(prefix, base + i * cols + j + 1)
+                index = base + i * cols + j + 1
+                from_dir = root / ckpt / "{}{:04d}".format(prefix, index)
                 seg_ = np.load(str(from_dir / "seg.npy"))
                 vet_ = np.load(str(from_dir / "dist1.npy"))
                 hor_ = np.load(str(from_dir / "dist2.npy"))
+
+                if transform is not None:
+                    vet_ = transform(vet_, seg_)
+                    hor_ = transform(hor_, seg_)
                 
                 seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg_
                 vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
@@ -130,7 +176,7 @@ def get_output_from_file(idx, use_patch_idx=False, root='./inference', ckpt='mod
 
         return seg, vet, hor
 
-def get_output_from_model(img, model):
+def get_output_from_model(img, model, transform=None):
     """
     Get output by feeding an image to a model.
     Args:
@@ -150,7 +196,10 @@ def get_output_from_model(img, model):
             pred[..., 1], \
             pred[..., 2]
 
-def get_original_image_from_file(idx, use_patch_idx=False, root='./inference', ckpt='model_003_ckpt_epoch_43', prefix='patch', patchsize=270, validsize=80, imagesize=1000):
+def get_original_image_from_file(idx,
+                                use_patch_idx=False, root='./inference',
+                                ckpt='model_003_ckpt_epoch_43', prefix='patch',
+                                patchsize=270, validsize=80, imagesize=1000):
     """
     Read original image from file.
     Args:
@@ -211,6 +260,12 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     """
     """initialization"""
     pred_seg = pred_seg > h
+    pred_seg = Cascade() \
+                .append(binary_opening, disk(3)) \
+                .append(remove_small_objects, min_size=3) \
+                (pred_seg)
+    vet = pred_vet
+    hor = pred_hor
     out_dict = {}
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
     color_map = out_dict['Voronoi_cell']
@@ -237,10 +292,6 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
 
     """improve cell colormap (for distance map label)"""
 
-    """ - pre-process the output maps"""
-    vet = shift_and_scale(pred_vet, 1, 0)
-    hor = shift_and_scale(pred_hor, 1, 0)
-
     """ - generate distance map"""
     grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
     grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
@@ -254,9 +305,10 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     # show(sig_diff)
     # show(point_label)
     dilated_point_mask = binary_dilation(point_mask, disk(1))
+    dilated_point_label = dilation(point_label, disk(2))
 
     """ - run watershed on distance map with markers"""
-    new_cell = watershed(new_seg, markers=point_label, mask=new_seg)
+    new_cell = watershed(sig_diff, markers=dilated_point_label, mask=new_seg)
 
     # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
     # imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
@@ -286,24 +338,23 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
 
     """=> new_cell"""
 
-    # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
-    # rgb_new_cell[dilated_point_mask] = [255, 255, 255]
-    # imsave('new_cell1.png', rgb_new_cell)
-
     return new_seg, new_cell
 
 def _test_instance_output():
     from skimage.io import imsave
 
-    prefix = 'output/out_k_0.2'
+    prefix = 'output/out'
+
+    use_patch_idx = False
 
     for IDX in range(1, 15):
-        res = get_instance_output(True, IDX, k=0.2, use_patch_idx=False)
-        img = get_original_image_from_file(IDX, use_patch_idx=False)
+        res = get_instance_output(True, IDX, k=0.05, use_patch_idx=use_patch_idx)
+        img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
 
         gd = np.gradient(res)
         gd = (gd[0] ** 2 + gd[1] ** 2) ** (0.5)
+        gd = dilation(gd, disk(2))
 
         res[gd == 0] = 0
 
@@ -315,25 +366,42 @@ def _test_instance_output():
 
         imsave('{}_{}.png'.format(prefix, IDX), img)
 
+        # show(img)
+
 def _test_improve_pseudo_labels():
     from dataset_reader import CoNSeP
     from utils import get_valid_view
+    from skimage.io import imsave
+    from compare import draw_label_boundaries
 
-    IDX = 2
+    # IDX = 2
     SPLIT = 'test'
-
     dataset = CoNSeP(download=False)
 
-    current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
-    current_seg_mask = current_seg_mask > 0
-    current_seg_mask = get_valid_view(current_seg_mask)
+    for IDX in range(1, 15):
+        ori = get_original_image_from_file(IDX)
 
-    point_mask = dataset.read_points(IDX, SPLIT)
-    point_mask = get_valid_view(point_mask)
+        current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
+        current_seg_mask = current_seg_mask > 0
+        current_seg_mask = get_valid_view(current_seg_mask)
 
-    seg, vet, hor = get_output_from_file(IDX)
+        point_mask = dataset.read_points(IDX, SPLIT)
+        point_mask = get_valid_view(point_mask)
 
-    new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
+        seg, vet, hor = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM)
+
+        new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
+
+        # show(current_seg_mask)
+        # show(seg > 0.5)
+        # show(new_seg)
+
+        # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
+        # rgb_new_cell[dilated_point_mask] = [255, 255, 255]
+        # imsave('new_cell1.png', rgb_new_cell)
+
+        # show(rgb_new_cell)
+        # show(draw_label_boundaries(ori, new_cell))
 
 if __name__ == "__main__":
     # _test_instance_output()
