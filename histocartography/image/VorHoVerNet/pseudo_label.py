@@ -1,5 +1,5 @@
 from utils import get_point_from_instance, draw_boundaries
-from color_label import get_cluster_label, get_cluster_label_v2
+from color_label import get_cluster_label
 from Voronoi_label import get_voronoi_edges
 from skimage.morphology import label, dilation, disk, binary_dilation
 from performance import OutTime
