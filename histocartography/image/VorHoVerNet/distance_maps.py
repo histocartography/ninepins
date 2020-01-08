@@ -12,24 +12,24 @@ def get_boundary(img):
 
 def area_vhmap(img):
     rmin, rmax, cmin, cmax = get_boundary(img)
-    v_gap = rmax - rmin
     h_gap = cmax - cmin
+    v_gap = rmax - rmin
     # print(rmin, rmax, cmin, cmax, v_gap, h_gap)
-    v_step = 2. / (v_gap - 1) if v_gap > 1 else 2
     h_step = 2. / (h_gap - 1) if h_gap > 1 else 2
+    v_step = 2. / (v_gap - 1) if v_gap > 1 else 2
 
     v_map, h_map = [np.zeros(img.shape, dtype=np.float32) for _ in range(2)]
     v_block, h_block = [np.zeros((v_gap, h_gap), dtype=np.float32) for _ in range(2)]
-    for i in range(v_gap):
-        v_block[i, :] = v_step * i - 1.
     for i in range(h_gap):
         h_block[:, i] = h_step * i - 1.
-    v_map[rmin:rmax, cmin:cmax] = v_block
+    for i in range(v_gap):
+        v_block[i, :] = v_step * i - 1.
     h_map[rmin:rmax, cmin:cmax] = h_block
+    v_map[rmin:rmax, cmin:cmax] = v_block
     
     # cell shape mask
-    v_map[img == 0] = 0
     h_map[img == 0] = 0
+    v_map[img == 0] = 0
     
     return h_map, v_map
 
@@ -49,8 +49,8 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
     to_idx = int(colormap.max()) + 1
     from_idx = int(colormap.min()) + 1
     for i in range(from_idx, to_idx):
-        vm, hm = area_vhmap(np.where(colormap == i, seg_mask, 0))
-        v_map += vm
+        hm, vm = area_vhmap(np.where(colormap == i, seg_mask, 0))
         h_map += hm
+        v_map += vm
         
     return h_map, v_map
