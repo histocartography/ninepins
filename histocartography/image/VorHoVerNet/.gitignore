@@ -3,14 +3,20 @@
 CoNSeP/*
 savers_pl/*
 
-# test script
+# training results
 
+inference/*
+output/*
 *.ckpt
 *.pt
 *.pkl
+*.npy
+
+# test script
 
 test.py
 model/hover_net.py
 opt.py
 config.py
 train.py
+compare.py
