@@ -106,7 +106,7 @@ def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
                         root='./inference', ckpt='model_003_ckpt_epoch_43',
-                        prefix='patch', patchsize=270, validsize=80, imagesize=1000):
+                        prefix='patch', patchsize=270, validsize=80, inputsize=1230, imagesize=1000):
     """
     Read output from file.
     Args:
@@ -123,6 +123,7 @@ def get_output_from_file(idx,
         prefix (str): prefix of the file names.
         patchsize (int): size of the input patch of model.
         validsize (int): size of the output patch of model.
+        inputsize (int): size of the padded whole image.
         imagesize (int): size of the whole image in dataset.
     Returns:
         (tuple):
@@ -144,9 +145,11 @@ def get_output_from_file(idx,
             hor = transform(hor, seg)
         return seg, vet, hor
     else:
+        if isinstance(inputsize, int):
+            inputsize = (inputsize, inputsize)
         if isinstance(imagesize, int):
             imagesize = (imagesize, imagesize)
-        h, w = imagesize[:2]
+        h, w = inputsize[:2]
 
         rows = int((h - patchsize) / validsize + 1)
         cols = int((w - patchsize) / validsize + 1)
@@ -174,7 +177,7 @@ def get_output_from_file(idx,
                 vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
                 hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor_
 
-        return seg, vet, hor
+        return seg[:imagesize, :imagesize, ...], vet[:imagesize, :imagesize, ...], hor[:imagesize, :imagesize, ...]
 
 def get_output_from_model(img, model, transform=None):
     """
@@ -199,7 +202,8 @@ def get_output_from_model(img, model, transform=None):
 def get_original_image_from_file(idx,
                                 use_patch_idx=False, root='./inference',
                                 ckpt='model_003_ckpt_epoch_43', prefix='patch',
-                                patchsize=270, validsize=80, imagesize=1000):
+                                patchsize=270, validsize=80,
+                                inputsize=1230, imagesize=1000):
     """
     Read original image from file.
     Args:
@@ -222,9 +226,11 @@ def get_original_image_from_file(idx,
         from_dir = root / ckpt / "{}{:04d}".format(prefix, idx)
         return imread(str(from_dir / "ori.png"))
     else:
+        if isinstance(inputsize, int):
+            inputsize = (inputsize, inputsize)
         if isinstance(imagesize, int):
             imagesize = (imagesize, imagesize)
-        h, w = imagesize[:2]
+        h, w = inputsize[:2]
 
         rows = int((h - patchsize) / validsize + 1)
         cols = int((w - patchsize) / validsize + 1)
@@ -241,7 +247,7 @@ def get_original_image_from_file(idx,
                 
                 img[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = img_
 
-        return img
+        return img[:imagesize, :imagesize, ...]
 
 def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=0.5):
     """
@@ -370,7 +376,7 @@ def _test_instance_output():
 
 def _test_improve_pseudo_labels():
     from dataset_reader import CoNSeP
-    from utils import get_valid_view
+    # from utils import get_valid_view
     from skimage.io import imsave
     from compare import draw_label_boundaries
 
@@ -383,10 +389,10 @@ def _test_improve_pseudo_labels():
 
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
         current_seg_mask = current_seg_mask > 0
-        current_seg_mask = get_valid_view(current_seg_mask)
+        # current_seg_mask = get_valid_view(current_seg_mask)
 
         point_mask = dataset.read_points(IDX, SPLIT)
-        point_mask = get_valid_view(point_mask)
+        # point_mask = get_valid_view(point_mask)
 
         seg, vet, hor = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM)
 
