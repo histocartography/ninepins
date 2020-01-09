@@ -11,10 +11,10 @@ entry_points:
       number_of_workers: {type: int, default: 1}
       model_name: {type string, default: model}
       seed: {type: int, default: 42}
-      batch_size: {type: int, default: 25}
+      batch_size: {type: int, default: 16}
       epochs: {type: int, default: 1}
       learning_rate: {type: float, default: 1e-5}
-      patch_size: {type: int, default: 128}
-      unet_depth: {type: int, default: 5}
-      filters: {type:int, default: 32}
+      patch_size: {type: int, default: 512}
+      unet_depth: {type: int, default: 2}
+      filters: {type:int, default: 4}
     command: "python3 training_script.py --bucket {bucket} -t {dataset} -d {data_path} --number_of_workers {number_of_workers} -n {model_name} -s {seed} -b {batch_size} -l {learning_rate} --epochs {epochs} --unet_depth {unet_depth} --filters {filters} --patch_size {patch_size}"

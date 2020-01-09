@@ -7,16 +7,18 @@ from sklearn.cluster import KMeans
 from performance import OutTime
 from utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient
 
-CLUSTER_FEATURES = "CD" # C: rgb, D: distance, S: he
+CLUSTER_FEATURES = "CD"
+# C: rgb, D: distance, S: he
 
 def get_cluster_label(image, distance_map, point_mask, cells, edges):
     """
     Compute color-based label from original image, distance map, and point mask.
-    @image: original image.
-    @distance_map: distance map.
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @cells: cells mask. (np.ndarray<bool>)
-    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
+    Args:
+        image (numpy.ndarray[uint8]): original image.
+        distance_map (numpy.ndarray[float]): distance map.
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+        cells (numpy.ndarray[int]): cells mask.
+        edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     """
     clusters = get_clusters(image, distance_map)
     from skimage.io import imsave
@@ -24,59 +26,15 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
     imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
-def get_cluster_label_v2(image, distance_map, point_mask, cells, edges, typed_point_map):
-    """
-    Compute color-based label from original image, distance map, and point mask.
-    For each image masked by dilated point mask do clustering.
-    @image: original image.
-    @distance_map: distance map.
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @cells: cells mask. (np.ndarray<bool>)
-    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
-    """
-    circle_mask = distance_map < 1000
-    types = np.unique(typed_point_map)
-    FULL = len(types) - 1
-    lock = mp.Lock()
-    queue = mp.Queue(FULL)
-
-    for type_ in types:
-        if type_ == 0: continue
-        cell_indices = cells[typed_point_map == type_]
-        mask = circle_mask & np.logical_or.reduce([cells == cell_index for cell_index in np.unique(cell_indices)])
-        p = mp.Process(target=_get_cluster_label_v2, args=(mask, image, distance_map, typed_point_map == type_, lock, queue))
-        p.daemon = True
-        p.start()
-
-    fnsd = 0
-    all_mask = np.zeros_like(point_mask)
-
-    while mp.active_children():
-        nuclear = queue.get()
-        all_mask = all_mask | nuclear
-        fnsd += 1
-        if fnsd == FULL:
-            break
-
-    return refine_cluster(all_mask, ~all_mask, cells, point_mask, edges)
-
-def _get_cluster_label_v2(mask, image, distance_map, type_points, lock, queue):
-    mask3d = mask[..., None]
-    mask3d = np.repeat(mask3d, 3, axis=2)
-    masked_image = np.where(mask3d, image, 0)
-    masked_distance_map = np.where(mask, distance_map, -1)
-    clstrs = get_clusters(masked_image, masked_distance_map, k=4)
-    nuclear_index, _ = find_nuclear_cluster(clstrs, type_points)
-    nuclear = clstrs == nuclear_index
-    lock.acquire()
-    queue.put(nuclear)
-    lock.release()
-
 def concat_normalize(*features):
     """
     Concatenate features after normalization.
-    @features: feature matrix and maximum pairs. List[Tuple[np.ndarray [h, w, n_features]], Number]
-    @Return: resulted feature matrix.
+    Args:
+        features (list[tuple[numpy.ndarray[any]{h, w, n_features}, number]]):
+            feature matrix and maximum pairs.
+            e.g. [(feature, 255), ...] where feature: numpy.ndarray[any]{h, w, n_features}
+    Returns:
+        concat_features (numpy.ndarray[any]{h, w, total_n_features}): resulted feature matrix.
     """
     features_ = []
     for feature, maximum in features:
@@ -88,9 +46,13 @@ def concat_normalize(*features):
 def find_nuclear_cluster(clstrs, point_mask):
     """
     Find the cluster with maximum overlaps with point labels.
-    @clstrs: clusters. (integer indicates the cluster index)
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @Return: nuclear cluster index, background cluster index.
+    Args:
+        clstrs (numpy.ndarray[int]): clusters. (integer indicates the cluster index)
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+    Returns:
+        (tuple):
+            nclr_clstr_idx (int): nuclear cluster index
+            bkgrd_clstr_idx (int): background cluster index.
     """
     overlaps = [np.count_nonzero(point_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
     nclr_clstr_idx = np.argmax(overlaps)
@@ -103,9 +65,11 @@ def find_nuclear_cluster(clstrs, point_mask):
 def get_features(image, distance_map):
     """
     Compute features from original image and distance map.
-    @image: original image.
-    @distance_map: distance map.
-    @Return: feature maps.
+    Args:
+        image (numpy.ndarray[uint8]): original image.
+        distance_map (numpy.ndarray[float]): distance map.
+    Returns:
+        feature_map (numpy.ndarray[float]): feature maps.
     """
     features = []
     for cluster_feature in CLUSTER_FEATURES:
@@ -123,9 +87,11 @@ def get_features(image, distance_map):
 def get_clusters(image, distance_map, k=3):
     """
     Compute clusters from original image and distance map.
-    @image: original image.
-    @distance_map: distance map.
-    @Return: cluster map.
+    Args:
+        image (numpy.ndarray[uint8]): original image.
+        distance_map (numpy.ndarray[float]): distance map.
+    Returns:
+        cluster_map (numpy.ndarray[int]): cluster map.
     """
     features = get_features(image, distance_map)
     KM = KMeans(n_clusters=k, random_state=0)
@@ -135,14 +101,15 @@ def get_clusters(image, distance_map, k=3):
 def refine_cluster(nuclei, background, cells, point_mask, edges):
     """
     Refine clustering result with information from Voronoi diagram.
-    @nuclei: nuclei mask. (np.ndarray<bool>)
-    @background: background mask. (np.ndarray<bool>)
-    @cells: cell indices. (integer indicates the cell index)
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @edges: voronoi edges. (255 indicates edge, 0 indicates background)
+    Args:
+        nuclei (numpy.ndarray[bool]): nuclei mask.
+        background (numpy.ndarray[bool]): background mask.
+        cells: cell indices (numpy.ndarray[int]). (integer indicates the cell index)
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+        edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     """
-    """refine nuclei"""
 
+    """refine nuclei"""
     refined_nuclei = Cascade(intermediate_prefix="test cases/cluster")\
                         .append(remove_small_objects, 30)\
                         .append(binary_dilation, disk(3))\
@@ -151,7 +118,7 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
                         .append("__or__", binary_dilation(point_mask, disk(5)))\
                         (nuclei)
     # .append("__and__", edges == 0)\ 152
-#     .append(binary_erosion, disk(2))\
+    # .append(binary_erosion, disk(2))\
     """refine background"""
 
     refined_background = background & (~refined_nuclei) & (~binary_dilation(point_mask, disk(10)))

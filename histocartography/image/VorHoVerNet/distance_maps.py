@@ -2,6 +2,17 @@ import numpy as np
 from Voronoi_label import get_voronoi_edges
 
 def get_boundary(img):
+    """
+    Get the bounding box of the object in an image.
+    Args:
+        img (numpy.ndarray[any]): the image.
+    Returns:
+        (list)
+            rmin (int): minimum row (top).
+            rmax (int): maximum row (bottom).
+            cmin (int): minimum column (left).
+            cmax (int): maximum column (right).
+    """
     row = np.any(img, axis=1)
     col = np.any(img, axis=0)
     rmin, rmax = np.where(row)[0][[0, -1]]
@@ -11,6 +22,15 @@ def get_boundary(img):
     return [rmin, rmax, cmin, cmax]
 
 def area_vhmap(img):
+    """
+    Generate distance maps for an image with only one object in it.
+    Args:
+        img (numpy.ndarray[any]): the image
+    Returns:
+        (tuple)
+            v_map (numpy.ndarray[float]): vertical distance map.
+            h_map (numpy.ndarray[float]): horizontal distance map.
+    """
     rmin, rmax, cmin, cmax = get_boundary(img)
     h_gap = cmax - cmin
     v_gap = rmax - rmin
@@ -34,6 +54,19 @@ def area_vhmap(img):
     return h_map, v_map
 
 def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
+    """
+    Generate distance maps from point mask and segmentation mask.
+    Args:
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+        seg_mask (numpy.ndarray[int]): segmentation mask.
+            If use_full_mask, positive integer indicates instance index and 0 indicates background.
+            Otherwise, 1 indicates nuclei while 0 indicates background.
+        use_full_mask (bool): whether the segmentation mask is with instance index.
+    Returns:
+        (tuple)
+            v_map (numpy.ndarray[float]): vertical distance map.
+            h_map (numpy.ndarray[float]): horizontal distance map.
+    """
     seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
     if use_full_mask:
         colormap = seg_mask

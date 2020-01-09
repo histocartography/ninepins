@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 from skimage.io import imsave
 from scipy.ndimage.morphology import distance_transform_edt
 from collections.abc import Mapping, Iterable, Callable
@@ -9,6 +10,10 @@ class Cascade:
     Useful when conducting morphological operations.
     """
     def __init__(self, intermediate_prefix=None):
+        """
+        Args:
+            intermediate_prefix (str): prefix to use when saving intermediate results.
+        """
         self.funcs = []
         self.save_intermediate = intermediate_prefix is not None
         self.intermediate_prefix = intermediate_prefix
@@ -41,6 +46,9 @@ class Cascade:
         return x
 
 def image_to_save(im):
+    """
+    Prepare an image for saving.
+    """
     if im.dtype == bool:
         return np.where(im, 255, 0).astype("uint8")
     else:
@@ -48,9 +56,12 @@ def image_to_save(im):
 
 def get_point_from_instance(inst, ignore_size=10, binary=False):
     """
-    @inst: instance map of nuclei. (integers larger than 0 indicates the nuclei instance)
-    @ignore_size: minimum size of a nuclei
-    @Return: point map of nuclei. (integers larger than 0 indicates the nuclei instance)
+    Args:
+        inst (numpy.ndarray[int]): instance map of nuclei. (integers larger than 0 indicates the nuclear instance)
+        ignore_size (int): minimum size of a nuclei
+        binary (bool): annotate point with binary value? Otherwise, with integer value.
+    Returns:
+        point_map (numpy.ndarray[int / bool if binary]): point map of nuclei. (integers larger than 0 indicates the nuclear instance)
     """
     max_inst_idx = int(inst.max())
     point_map = np.zeros_like(inst)
@@ -68,16 +79,23 @@ def get_point_from_instance(inst, ignore_size=10, binary=False):
 
 def booleanize_point_labels(pt_lbls):
     """
-    @pt_lbls: point labels. (integers larger than 0 indicates the nuclei instance)
-    @Return: point mask. (True at nuclear point, False at background)
+    Args:
+        pt_lbls (numpy.ndarray[int]): point labels. (integers larger than 0 indicates the nuclear instance)
+    Returns:
+        point mask (numpy.ndarray[bool]). (True at nuclear point, False at background)
     """
     return pt_lbls > 0
 
 def get_center(coords, mode="extrema"):
     """
-    Find center from list of coordinates. (mean of extreme values)
-    @coords: list of coordinates. np.ndarray [n_coordinates, n_dimensions]
-    @Return: coordinate of center. Tuple[int]
+    Find center from list of coordinates.
+    Args:
+        coords (numpy.ndarray[int]{n_coordinates, n_dimensions}): list of coordinates.
+        mode (str): mode to compute center.
+            'extrema': mean of extreme values.
+            'mass': mass center.
+    Returns:
+        center (tuple[int]): coordinate of center.
     """
     if mode == "extrema":
         center = []
@@ -91,30 +109,25 @@ def get_center(coords, mode="extrema"):
     else:
         raise ValueError("Unknown mode")
 
-def gen_distance_map(pt_lbls):
-    """
-    TODO: deprecated: distance map already computed in Voronoi label
-    Generate distance map from point_labels.
-    @pt_lbls: point labels. (integers larger than 0 indicates the nuclei instance)
-    @Return: distance map.
-    """
-    return distance_transform_edt(pt_lbls == 0)
-
 def gen_distance(inst):
     """
     TODO: deprecated: distance map already computed in Voronoi label
-    Workflow of generating distance map from instance labels.
-    @inst: instance labels. (integers larger than 0 indicates the nuclei instance)
-    @Return: distance map.
+    Generate distance map from instance labels.
+    Args:
+        inst (numpy.ndarray[int]): instance labels. (integers larger than 0 indicates the nuclear instance)
+    Returns:
+        distance_map (numpy.ndarray[float]): distance map.
     """
     pt_lbls = get_point_from_instance(inst)
-    return gen_distance_map(pt_lbls)
+    return distance_transform_edt(pt_lbls == 0)
 
 def normalize_image(image):
     """
     Normalize an image for saving as an image file.
-    @image: the image to normalize.
-    @Return: normalized image.
+    Args:
+        image (numpy.ndarray[uint8]): the image to normalize.
+    Returns:
+        normalized_image (numpy.ndarray[float]): normalized image.
     """
     M, m = image.max(), image.min()
     image = (image - m) / (M - m)
@@ -123,8 +136,10 @@ def normalize_image(image):
 def get_gradient(image):
     """
     Compute the magnitude of gradient of the image.
-    @image: the image to compute gradient.
-    @Return: the gradient magnitude.
+    Args:
+        image (numpy.ndarray[any]): the image to compute gradient.
+    Returns:
+        gradient (numpy.ndarray[float]): the gradient magnitude.
     """
     gx, gy = np.gradient(image)
     gradient = (gx**2 + gy**2)**(0.5)
@@ -133,10 +148,10 @@ def get_gradient(image):
 def draw_boundaries(image, mask, color=[0, 255, 0]):
     """
     Draw boundaries of mask with given color on image.
-    @image: the image to draw.
-    @mask: the mask.
-    @color: the color used to indicate the boundaries.
-    @Return: <None>
+    Args:
+        image (numpy.ndarray[uint8]): the image to draw.
+        mask (numpy.ndarray[float]): the mask.
+        color (number, sequence[number]): the color used to indicate the boundaries.
     """
     if isinstance(color, (int, float)):
         assert 0 <= color <= 255, "Invalid color."
@@ -148,10 +163,68 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
     gradient = get_gradient(mask)
     image[gradient > 0] = color
 
+def get_valid_view(image, patch_size=270, valid_size=80):
+    """
+    Crop the image into only valid region according to the patch size and valid size.
+    Args:
+        image (numpy.ndarray[any]): the image.
+        patch_size (int): the patch size.
+        valid_size (int): the valid size.
+    Returns:
+        cropped_image (numpy.ndarray[any])
+    """
+    h, w = image.shape[:2]
+    offset = (patch_size - valid_size) // 2
+    rows = int((h - patch_size) / valid_size + 1)
+    cols = int((w - patch_size) / valid_size + 1)
+    y_end = offset + rows * valid_size
+    x_end = offset + cols * valid_size
+    return image[offset: y_end, offset: x_end, ...]
+
 def scale(img, vmax, vmin):
-    max_ = img.max() + 1.0e-8
-    min_ = img.min() + 1.0e-8
-    img[img > 0] *= (vmax / max_)
-    img[img < 0] *= (vmin / min_)
+    """
+    Scale an image into [vmin, vmax]. (Positive and negative values are scaled independently.)
+    Args:
+        img (numpy.ndarray[any]): the image.
+        vmax (number): maximum value.
+        vmin (number): minimum value.
+    Returns:
+        scaled_image (numpy.ndarray[any])
+    """
+    img = img.copy()
+    max_ = img.max() 
+    min_ = img.min() 
+    if max_ != 0:
+        img[img > 0] *= (vmax / max_)
+    if min_ != 0: 
+        img[img < 0] *= (vmin / min_)
     return img
+
+def shift_and_scale(img, vmax, vmin):
+    """
+    Scale an image into [vmin, vmax]. (with shifting)
+    Args:
+        img (numpy.ndarray[any]): the image.
+        vmax (number): maximum value.
+        vmin (number): minimum value.
+    Returns:
+        scaled_image (numpy.ndarray[any])
+    """
+    img = img.copy()
+    max_ = img.max()
+    min_ = img.min()
+    rang = max_ - min_
+    vrang = vmax - vmin
+    img -= (min_ - vmin)
+    img *= (vrang / rang)
+    return img
+
+def show(img):
+    """
+    Plot an image.
+    Args:
+        img (numpy.ndarray[any]): the image.
+    """
+    plt.imshow(img)
+    plt.show()
     
