@@ -114,16 +114,16 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 
 if __name__ == '__main__':
     # load model
-    model_name = 'model_005_ckpt_epoch_37.ckpt'
+    model_name = 'model_009_ckpt_epoch_3.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
-    print('trained epoch: {}'.format(checkpoint['epoch']))
+    print('model_name: {}'.format(model_name))
     model = Net()
     model.load_state_dict(checkpoint['state_dict'])
     model.eval()
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
