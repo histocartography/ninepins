@@ -192,10 +192,12 @@ def scale(img, vmax, vmin):
         scaled_image (numpy.ndarray[any])
     """
     img = img.copy()
-    max_ = img.max() if img.max() != 0 else 1
-    min_ = img.min() if img.min() != 0 else 1
-    img[img > 0] *= (vmax / max_)
-    img[img < 0] *= (vmin / min_)
+    max_ = img.max() 
+    min_ = img.min() 
+    if max_ != 0:
+        img[img > 0] *= (vmax / max_)
+    if min_ != 0: 
+        img[img < 0] *= (vmin / min_)
     return img
 
 def shift_and_scale(img, vmax, vmin):
