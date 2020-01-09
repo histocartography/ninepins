@@ -115,4 +115,7 @@ tmp/
 *.png
 *.hdf5
 *.json
+*.pt
+
+#dstore files
 .DS_Store
