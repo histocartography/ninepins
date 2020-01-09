@@ -1,7 +1,12 @@
+import os
 import numpy as np
-from skimage.io import imread
+from skimage.io import imread, imsave
 from torch.utils.data import Dataset
 from dataset_reader import *
+from distance_maps import get_distancemaps
+from pseudo_label import gen_pseudo_label
+from utils import get_point_from_instance
+
 
 def flip_image(img, flip):
     """
@@ -24,12 +29,6 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', contain_both=False):
         split (str): data types, 'train' or 'test'
         contain_both (bool): if contain exhausted masks
     """
-    import os
-    from skimage.io import imsave
-    from skimage.morphology import binary_dilation
-    from pseudo_label import gen_pseudo_label
-    from distance_maps import get_distancemaps
-    from utils import get_point_from_instance
     
     data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
     IDX_LIMITS = data_reader.IDX_LIMITS
@@ -42,7 +41,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', contain_both=False):
         point_mask = data_reader.read_points(i, split)
         
         # get cluster masks
-        seg_mask, edges = gen_pseudo_label(ori, point_mask, np.where(point_mask, type_, 0), v2=False, return_edge=True)
+        seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
         seg_mask_w_edges = seg_mask & (edges == 0)
 
         # generate distance maps

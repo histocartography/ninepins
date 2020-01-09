@@ -4,10 +4,15 @@ from performance import OutTime
 def get_voronoi_edges(point_mask, view=False, extra_out=None):
     '''
     Compute Voronoi edges from point mask.
-    @point_mask: point mask. (True at nuclear point, False at background)
-    @view: whether to display output in plot window.
-    @extra_out: dictionary to store additional output. (must be a dictionary.)
-    @Return: voronoi edges. (255 indicates edge, 0 indicates background)
+    Args:
+        point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
+        view (bool): whether to display output in plot window.
+        extra_out (dict / None): dictionary to store additional output or no additional output would be stored if set to None.
+            Results:
+            'dist_map' (numpy.ndarray[float]): distance map.
+            'Voronoi_cell' (numpy.ndarray[int]): cell colormap. (positive integer indicates instance index.)
+    Returns:
+        edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     Note: 'point' means one pixel per point.
     Reference: some codes from https://gist.github.com/bert/1188638
     '''
@@ -58,10 +63,10 @@ def main():
     ori = dataset.read_image(IDX, SPLIT)
     
     with OutTime():
-        mass_map = dataset.read_points(IDX, SPLIT)
+        point_mask = dataset.read_points(IDX, SPLIT)
     
     with OutTime():
-        get_voronoi_edges(mass_map, view=True)
+        get_voronoi_edges(point_mask, view=True)
 
 if __name__ == "__main__":
     main()
