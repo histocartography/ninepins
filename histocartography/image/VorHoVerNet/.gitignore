@@ -20,3 +20,4 @@ opt.py
 config.py
 train.py
 compare.py
+inference.py
