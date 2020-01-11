@@ -125,8 +125,8 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 
         # get prediction
         with torch.no_grad():
-            pred = model(img * 255) # for old checkpoints that were trained with 0-255 images
-            # pred = model(img)
+            # pred = model(img * 255) # for old checkpoints that were trained with 0-255 images
+            pred = model(img)
         
         # transpose and reshape
         img = img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
@@ -156,6 +156,7 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 if __name__ == '__main__':
     # load model
     model_name = 'model_009_ckpt_epoch_3.ckpt'
+    # model_name = 'model_003_ckpt_epoch_43.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
     model = Net()

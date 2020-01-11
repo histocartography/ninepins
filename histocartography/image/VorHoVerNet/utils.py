@@ -159,11 +159,16 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
         assert len(color) == 3 or len(color) == 1, "Invalid color length."
         for c in color:
             assert 0 <= c <= 255, "Invalid color."
+    if len(image.shape) == 2:
+        image = image[..., None]
+    if image.shape[2] == 1:
+        image = np.repeat(image, 3, axis=-1)
     mask = np.where(mask, 255, 0)
     gradient = get_gradient(mask)
     image[gradient > 0] = color
+    return image
 
-def get_valid_view(image, patch_size=270, valid_size=80):
+def get_valid_view(image, patch_size=270, valid_size=80, requested_size=1000):
     """
     Crop the image into only valid region according to the patch size and valid size.
     Args:
@@ -179,7 +184,7 @@ def get_valid_view(image, patch_size=270, valid_size=80):
     cols = int((w - patch_size) / valid_size + 1)
     y_end = offset + rows * valid_size
     x_end = offset + cols * valid_size
-    return image[offset: y_end, offset: x_end, ...]
+    return image[offset: y_end, offset: x_end, ...][:requested_size, :requested_size, ...]
 
 def scale(img, vmax, vmin):
     """
