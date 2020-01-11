@@ -308,15 +308,15 @@ if __name__ == "__main__":
     # from utils import show, get_valid_view
     from dataset_reader import CoNSeP
     # IDX = 3
-    # prefix = 'out'
-    prefix = 'curr_cell'
+    prefix = 'out'
+    # prefix = 'curr_cell'
     dataset = CoNSeP(download=False)
     
     m = 'DICE2'
 
     for IDX in range(1, 15):
-        # output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
-        output_map = np.load('iteration/{}_{}.npy'.format(prefix, IDX))
+        output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+        # output_map = np.load('iteration/{}_{}.npy'.format(prefix, IDX))
 
         label, _ = dataset.read_labels(IDX, 'test')
         # label = get_valid_view(label)
