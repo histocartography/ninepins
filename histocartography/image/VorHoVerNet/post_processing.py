@@ -7,7 +7,7 @@ from skimage.color import label2rgb
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.io import imread, imsave
 from skimage.morphology import *
-from utils import Cascade, show, scale, shift_and_scale
+from utils import Cascade, show, scale, shift_and_scale, get_valid_view, draw_boundaries
 from Voronoi_label import get_voronoi_edges
 
 def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
@@ -17,7 +17,7 @@ def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
 
 DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
 
-def _get_instance_output(seg, vet, hor, h=0.5, k=0.05):
+def _get_instance_output(seg, vet, hor, h=0.5, k=0.1):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -43,11 +43,12 @@ def _get_instance_output(seg, vet, hor, h=0.5, k=0.05):
     sig_diff = np.maximum(grad_vet, grad_hor)
     # sig_diff = gaussian(sig_diff)
     sig_diff = Cascade() \
-                    .append(maximum_filter, size=3) \
                     .append(median_filter, size=3) \
+                    .append(gaussian) \
                     (sig_diff)
+                    # .append(maximum_filter, size=3) \
     sig_diff[~th_seg] = 0
-    
+
     # show(vet)
     # show(hor)
     # show(sig_diff)
@@ -105,7 +106,7 @@ def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
 
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
-                        root='./inference', ckpt='model_003_ckpt_epoch_43',
+                        root='./inference', ckpt='model_009_ckpt_epoch_18',
                         prefix='patch', patchsize=270, validsize=80, inputsize=1230, imagesize=1000):
     """
     Read output from file.
@@ -177,7 +178,9 @@ def get_output_from_file(idx,
                 vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
                 hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor_
 
-        return seg[:imagesize, :imagesize, ...], vet[:imagesize, :imagesize, ...], hor[:imagesize, :imagesize, ...]
+        ih, iw = imagesize
+
+        return seg[:ih, :iw, ...], vet[:ih, :iw, ...], hor[:ih, :iw, ...]
 
 def get_output_from_model(img, model, transform=None):
     """
@@ -201,7 +204,7 @@ def get_output_from_model(img, model, transform=None):
 
 def get_original_image_from_file(idx,
                                 use_patch_idx=False, root='./inference',
-                                ckpt='model_003_ckpt_epoch_43', prefix='patch',
+                                ckpt='model_009_ckpt_epoch_18', prefix='patch',
                                 patchsize=270, validsize=80,
                                 inputsize=1230, imagesize=1000):
     """
@@ -247,7 +250,9 @@ def get_original_image_from_file(idx,
                 
                 img[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = img_
 
-        return img[:imagesize, :imagesize, ...]
+        ih, iw = imagesize
+
+        return img[:ih, :iw, ...]
 
 def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=0.5):
     """
@@ -275,6 +280,8 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     out_dict = {}
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
     color_map = out_dict['Voronoi_cell']
+    dilated_point_mask = binary_dilation(point_mask, disk(1))
+    # dilated_point_label = dilation(point_label, disk(2))
 
     """improve segmentation label"""
     new_seg = np.zeros_like(pred_seg)
@@ -303,18 +310,23 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
     sig_diff = np.maximum(grad_vet, grad_hor)
     sig_diff = Cascade() \
-                    .append(maximum_filter, size=3) \
                     .append(median_filter, size=3) \
+                    .append(gaussian) \
                     (sig_diff)
-    sig_diff[~pred_seg] = 0
-    
+                    # .append(maximum_filter, size=3) \
+                    # .append(median_filter, size=3) \
+    sig_diff[~new_seg] = 0
+    sig_diff[dilated_point_mask] = 0
     # show(sig_diff)
     # show(point_label)
-    dilated_point_mask = binary_dilation(point_mask, disk(1))
-    dilated_point_label = dilation(point_label, disk(2))
 
     """ - run watershed on distance map with markers"""
-    new_cell = watershed(sig_diff, markers=dilated_point_label, mask=new_seg)
+    # show(sig_diff)
+    b_sig_diff = draw_boundaries(sig_diff.copy(), new_seg, color=[0, 1, 0])
+    b_sig_diff[dilated_point_mask] = [1, 0, 0]
+    show(b_sig_diff)
+    
+    new_cell = watershed(sig_diff, markers=point_label, mask=new_seg)
 
     # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
     # imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
@@ -354,7 +366,10 @@ def _test_instance_output():
     use_patch_idx = False
 
     for IDX in range(1, 15):
-        res = get_instance_output(True, IDX, k=0.05, use_patch_idx=use_patch_idx)
+    # for IDX in range(1, 2367):
+    # observe_idx = 20
+    # for IDX in range(observe_idx, observe_idx + 1):
+        res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
         img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
 
@@ -372,7 +387,7 @@ def _test_instance_output():
 
         imsave('{}_{}.png'.format(prefix, IDX), img)
 
-        # show(img)
+        show(img)
 
 def _test_improve_pseudo_labels():
     from dataset_reader import CoNSeP
@@ -384,10 +399,11 @@ def _test_improve_pseudo_labels():
     SPLIT = 'test'
     dataset = CoNSeP(download=False)
 
-    for IDX in range(1, 15):
+    for IDX in range(1, 2):
         ori = get_original_image_from_file(IDX)
 
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
+        current_seg_mask = get_valid_view(current_seg_mask)
         current_seg_mask = current_seg_mask > 0
         # current_seg_mask = get_valid_view(current_seg_mask)
 
@@ -402,11 +418,11 @@ def _test_improve_pseudo_labels():
         # show(seg > 0.5)
         # show(new_seg)
 
-        # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
+        rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
         # rgb_new_cell[dilated_point_mask] = [255, 255, 255]
         # imsave('new_cell1.png', rgb_new_cell)
 
-        # show(rgb_new_cell)
+        show(rgb_new_cell)
         # show(draw_label_boundaries(ori, new_cell))
 
 if __name__ == "__main__":
