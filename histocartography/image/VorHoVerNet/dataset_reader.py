@@ -64,7 +64,7 @@ class CoNSeP_local(CoNSeP_common):
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
         else:
-            path += f"{split.capitalize()}/PseudoLabels_{self.itr}/{split}_{idx}.png"
+            path += f"{split.capitalize()}/PseudoLabels_{self.itr}/{split}_{idx}_0.png"
         return path
 
     def read_image(self, idx, split):
