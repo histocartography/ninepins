@@ -191,7 +191,7 @@ def scale(img, vmax, vmin):
     Returns:
         scaled_image (numpy.ndarray[any])
     """
-    img = img.copy()
+    # img = img.copy()
     max_ = img.max() 
     min_ = img.min() 
     if max_ != 0:
