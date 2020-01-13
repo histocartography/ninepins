@@ -1,8 +1,11 @@
-import numpy as np
+from collections.abc import Callable, Iterable, Mapping
 import matplotlib.pyplot as plt
-from skimage.io import imsave
+import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
-from collections.abc import Mapping, Iterable, Callable
+from skimage.color import label2rgb
+from skimage.io import imsave
+from skimage.morphology import dilation, disk
+from constants import LABEL_COLOR_LIST
 
 class Cascade:
     """
@@ -44,6 +47,11 @@ class Cascade:
                 except Exception as e:
                     print(str(e))
         return x
+
+def broadcastable(func):
+    def func_(*args, **kwargs):
+        return [func(arg, **kwargs) for arg in args]
+    return func_
 
 def image_to_save(im):
     """
@@ -168,6 +176,28 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
     image[gradient > 0] = color
     return image
 
+def get_label_boundaries(labeled_seg, d=1):
+    gd = get_gradient(labeled_seg)
+    labeled_seg[gd == 0] = 0
+    labeled_seg = dilation(labeled_seg, disk(d))
+    return labeled_seg
+
+def random_sub_list(l, bound=3):
+    length = len(l)
+    st = np.random.randint(0, bound)
+    return l[st:]
+
+def draw_label_boundaries(ori, labeled_seg, d=1):
+    img = ori.copy()
+    labeled_seg = get_label_boundaries(labeled_seg, d=d)
+    colors = random_sub_list(LABEL_COLOR_LIST)
+    rgb_labeled_seg = (label2rgb(labeled_seg, colors=colors) * 255).astype(np.uint8)
+    labeled_seg = labeled_seg == 0
+    labeled_seg = labeled_seg[..., None]
+    labeled_seg = np.concatenate((labeled_seg, labeled_seg, labeled_seg), axis=2)
+    labeled_seg = np.where(labeled_seg, img, rgb_labeled_seg)
+    return labeled_seg
+
 def get_valid_view(image, patch_size=270, valid_size=80, requested_size=1000):
     """
     Crop the image into only valid region according to the patch size and valid size.
@@ -224,6 +254,7 @@ def shift_and_scale(img, vmax, vmin):
     img *= (vrang / rang)
     return img
 
+@broadcastable
 def show(img):
     """
     Plot an image.
@@ -232,4 +263,3 @@ def show(img):
     """
     plt.imshow(img)
     plt.show()
-    
