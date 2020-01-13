@@ -7,8 +7,11 @@ from skimage.color import label2rgb
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.io import imread, imsave
 from skimage.morphology import *
-from utils import Cascade, show, scale, shift_and_scale, get_valid_view, draw_boundaries
+from utils import *
 from Voronoi_label import get_voronoi_edges
+
+DEFAULT_H = 0.5
+DEFAULT_K = 1.7
 
 def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
     image[seg <= th] = 0
@@ -17,7 +20,7 @@ def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
 
 DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
 
-def _get_instance_output(seg, vet, hor, h=0.5, k=0.1):
+def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -38,15 +41,23 @@ def _get_instance_output(seg, vet, hor, h=0.5, k=0.1):
     """combine the output maps"""
 
     """ - generate distance map"""
+    # grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    # grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
+    # sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
+    # sig_diff = Cascade() \
+    #                 .append(median_filter, size=5) \
+    #                 (sig_diff)
+    # sig_diff[~th_seg] = 0
+
+
     grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
     grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
     sig_diff = np.maximum(grad_vet, grad_hor)
-    # sig_diff = gaussian(sig_diff)
     sig_diff = Cascade() \
+                    .append(maximum_filter, size=3) \
                     .append(median_filter, size=3) \
-                    .append(gaussian) \
                     (sig_diff)
-                    # .append(maximum_filter, size=3) \
+                    # .append(gaussian) \
     sig_diff[~th_seg] = 0
 
     # show(vet)
@@ -58,12 +69,16 @@ def _get_instance_output(seg, vet, hor, h=0.5, k=0.1):
         k = sig_diff.mean()
     markers = th_seg & (sig_diff <= k)
     # intermediate_prefix='markers/m'
+    # markers = Cascade() \
+    #                 .append(remove_small_objects, min_size=10) \
+    #                 (markers)
+
     markers = Cascade() \
                     .append(binary_dilation, disk(3)) \
                     .append(binary_fill_holes) \
                     .append(binary_erosion, disk(3)) \
+                    .append(remove_small_objects, min_size=5) \
                     (markers)
-                    # .append(remove_small_objects, min_size=5) \
     markers = label(markers)
     
     # show(th_seg)
@@ -73,16 +88,22 @@ def _get_instance_output(seg, vet, hor, h=0.5, k=0.1):
     res = watershed(sig_diff, markers=markers, mask=th_seg)
 
     """ - re-fill regions in thresholded nuclei map which do not have markers"""
-    lbl_th_seg = label(th_seg)
-    offset = int(markers.max())
+    not_in_watershed = th_seg & (res == 0)
+    lbl_th_seg = label(not_in_watershed)
+    offset = int(res.max())
     lbl_th_seg += offset
     lbl_th_seg[lbl_th_seg == offset] = 0
     
-    res = np.where((res == 0) & (lbl_th_seg != 0), lbl_th_seg, res)
+    # res = np.where((res == 0) & (lbl_th_seg != 0), lbl_th_seg, res)
+    res += lbl_th_seg
+
+    """debug"""
+    # imsave("output/sig_diff.png", (shift_and_scale(sig_diff, 1, 0) * 255).astype(np.uint8))
+    # imsave("output/markers.png", (label2rgb(markers, bg_label=0) * 255).astype(np.uint8))
 
     return res
 
-def get_instance_output(from_file, *args, h=0.5, k=0.1, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -254,7 +275,7 @@ def get_original_image_from_file(idx,
 
         return img[:ih, :iw, ...]
 
-def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=0.5):
+def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=DEFAULT_H):
     """
     Improve the pseudo labels with current pseudo labels and model output.
     Args:
@@ -278,26 +299,75 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     vet = pred_vet
     hor = pred_hor
     out_dict = {}
-    edges = get_voronoi_edges(point_mask, extra_out=out_dict)
+    edges = get_voronoi_edges(point_mask, extra_out=out_dict, l2_norm=True)
     color_map = out_dict['Voronoi_cell']
     dilated_point_mask = binary_dilation(point_mask, disk(1))
     # dilated_point_label = dilation(point_label, disk(2))
 
     """improve segmentation label"""
-    new_seg = np.zeros_like(pred_seg)
+    new_seg = np.zeros_like(pred_seg).astype(int)
+    # new_seg_curr = np.zeros_like(pred_seg).astype(int)
+    # new_seg_pred = new_seg_curr.copy()
+    # new_seg = np.zeros_like(pred_seg)
 
-    labeled_pred_seg = label(pred_seg)
+    # labeled_pred_seg = label(pred_seg)
+    # labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+    # point_label = label(point_mask)
+    # MAX_POINT_IDX = int(point_label.max())
+    # for idx in range(1, MAX_POINT_IDX + 1):
+    #     pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+    #     if pred_cc_on_idx != 0:
+    #         new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+    #     else:
+    #         curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+    #         if curr_cc_on_idx != 0:
+    #             new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+
+    labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
+
+    # labeled_pred_seg = label(pred_seg)
     labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
     point_label = label(point_mask)
     MAX_POINT_IDX = int(point_label.max())
     for idx in range(1, MAX_POINT_IDX + 1):
         pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
         if pred_cc_on_idx != 0:
-            new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+            # new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+            new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
         else:
             curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
-            if curr_cc_on_idx != 0:
-                new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+            # new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+            assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
+            connected_components = label(labeled_curr_seg == curr_cc_on_idx)
+            cc_on_idx = connected_components[point_label == idx][0]
+            new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
+            # new_seg = new_seg | (connected_components == cc_on_idx)
+
+    # new_cell = color_map * new_seg
+
+    base = new_seg.max()
+    for idx in np.unique(new_seg):
+        seg = new_seg == idx
+        if np.count_nonzero(seg & point_mask) > 1:
+            seg_cell = watershed(seg, markers=point_label, mask=seg)
+            step = seg_cell.max()
+            seg_cell[seg_cell > 0] += base
+            base += step
+            new_seg[seg] = seg_cell[seg]
+
+    new_seg = label(new_seg)
+    new_cell = new_seg
+    new_seg = new_cell > 0
+    return new_seg, new_cell
+
+    # show(label2rgb(new_seg_pred, bg_label=0))
+
+    # offset = new_seg_pred.max()
+    # new_seg_curr += offset
+    # new_seg_curr[new_seg_curr == offset] = 0
+    # new_seg = new_seg_pred + new_seg_curr
+
+    # return new_seg
 
     """=> new_seg"""
 
@@ -306,27 +376,42 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     """improve cell colormap (for distance map label)"""
 
     """ - generate distance map"""
-    grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
-    grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
-    sig_diff = np.maximum(grad_vet, grad_hor)
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
+    # sig_diff = np.maximum(grad_vet, grad_hor)
+    # sig_diff = Cascade() \
+    #                 .append(median_filter, size=3) \
+    #                 .append(gaussian) \
+    #                 (sig_diff)
+    #                 # .append(maximum_filter, size=3) \
+    #                 # .append(median_filter, size=3) \
+    # sig_diff[~new_seg] = 0
+
+    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
+    # show(grad_vet, grad_hor)
+    # sig_diff = np.maximum(grad_vet, grad_hor)
+    sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
     sig_diff = Cascade() \
-                    .append(median_filter, size=3) \
-                    .append(gaussian) \
+                    .append(median_filter, size=5) \
                     (sig_diff)
+                    # .append(gaussian) \
                     # .append(maximum_filter, size=3) \
-                    # .append(median_filter, size=3) \
     sig_diff[~new_seg] = 0
-    sig_diff[dilated_point_mask] = 0
-    # show(sig_diff)
+
+    # sig_diff_ = sig_diff.copy()
+    # sig_diff_[point_mask] = 5
+    # show(sig_diff_)
     # show(point_label)
 
     """ - run watershed on distance map with markers"""
     # show(sig_diff)
-    b_sig_diff = draw_boundaries(sig_diff.copy(), new_seg, color=[0, 1, 0])
-    b_sig_diff[dilated_point_mask] = [1, 0, 0]
-    show(b_sig_diff)
+    # b_sig_diff = draw_boundaries(sig_diff.copy(), new_seg, color=[0, 1, 0])
+    # b_sig_diff[dilated_point_mask] = [1, 0, 0]
+    # show(b_sig_diff)
     
-    new_cell = watershed(sig_diff, markers=point_label, mask=new_seg)
+    # new_cell = watershed(sig_diff, markers=point_label, mask=new_seg)
+    new_cell = watershed(new_seg, markers=point_label, mask=new_seg)
 
     # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
     # imsave('sig_diff.png', (sig_diff * 127).astype(np.uint8))
@@ -353,6 +438,14 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     for cell in range(1, int(new_cell.max()) + 1):
         if np.count_nonzero((new_cell == cell) & point_mask) == 0:
             new_cell[new_cell == cell] = 0
+            # new_cell[new_cell > cell] -= 1
+        # else:
+        #     if np.count_nonzero(new_cell == cell) < 30:
+        #         point = point_mask & (new_cell == cell)
+        #         new_cell[binary_dilation(point, disk(5)) & new_seg] = cell
+
+    # """force every point to has minimum size of disk(3)"""
+    new_cell = label(new_cell)
 
     """=> new_cell"""
 
@@ -361,33 +454,34 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
 def _test_instance_output():
     from skimage.io import imsave
 
-    prefix = 'output/out'
+    prefix = 'output/out_old'
 
     use_patch_idx = False
 
     for IDX in range(1, 15):
     # for IDX in range(1, 2367):
-    # observe_idx = 20
+    # observe_idx = 1
     # for IDX in range(observe_idx, observe_idx + 1):
-        res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
+        res = get_instance_output(True, IDX, k=0.1, use_patch_idx=use_patch_idx)
         img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
 
-        gd = np.gradient(res)
-        gd = (gd[0] ** 2 + gd[1] ** 2) ** (0.5)
-        gd = dilation(gd, disk(2))
+        # gd = np.gradient(res)
+        # gd = (gd[0] ** 2 + gd[1] ** 2) ** (0.5)
+        # gd = dilation(gd, disk(2))
 
-        res[gd == 0] = 0
+        # res[gd == 0] = 0
 
-        rgbres = (label2rgb(res, bg_label=0) * 255).astype(np.uint8)
+        # rgbres = (label2rgb(res, bg_label=0) * 255).astype(np.uint8)
         
-        res = res[..., None]
-        res = np.concatenate((res, res, res), axis=2)
-        img = np.where(res == 0, img, rgbres).astype(np.uint8)
+        # res = res[..., None]
+        # res = np.concatenate((res, res, res), axis=2)
+        # img = np.where(res == 0, img, rgbres).astype(np.uint8)
+        img = draw_label_boundaries(img, res)
 
         imsave('{}_{}.png'.format(prefix, IDX), img)
 
-        show(img)
+        # show(img)
 
 def _test_improve_pseudo_labels():
     from dataset_reader import CoNSeP
@@ -414,17 +508,21 @@ def _test_improve_pseudo_labels():
 
         new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
 
+        # new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
+
         # show(current_seg_mask)
         # show(seg > 0.5)
         # show(new_seg)
 
-        rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
-        # rgb_new_cell[dilated_point_mask] = [255, 255, 255]
+        dilated_point_mask = binary_dilation(point_mask, disk(1))
+        # rgb_new_cell = (label2rgb(new_cell, bg_label=0) * 255).astype(np.uint8)
+        rgb_new_cell = draw_label_boundaries(ori, new_cell)
+        rgb_new_cell[dilated_point_mask] = [255, 255, 255]
         # imsave('new_cell1.png', rgb_new_cell)
 
         show(rgb_new_cell)
         # show(draw_label_boundaries(ori, new_cell))
 
 if __name__ == "__main__":
-    # _test_instance_output()
-    _test_improve_pseudo_labels()
+    _test_instance_output()
+    # _test_improve_pseudo_labels()
