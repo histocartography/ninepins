@@ -21,20 +21,21 @@ def flip_image(img, flip, mode='normal', contain_both=False):
     """
     _channels = 3
     assert mode in ['normal', 'dist'], 'mode must be either normal or dist'
-    assert mode == 'dist' and img.shape[-1] == _channels, 'img channel must be {}'.format(_channels)
+    if mode == 'dist':
+        assert img.shape[-1] == _channels, 'img channel must be {}, got {}'.format(_channels, img.shape[-1])
 
     res = img.copy()
     if flip == 1:
         if mode == 'dist':
-            res[..., 2] = ~res[..., 2]
+            res[..., 2] = -res[..., 2]
         return np.flip(res, 0)
     elif flip == 2:
         if mode == 'dist':
-            res[..., 1] = ~res[..., 1]
+            res[..., 1] = -res[..., 1]
         return np.flip(res, 1)
     elif flip == 3:
         if mode == 'dist':
-            res[..., (1, 2)] = ~res[..., (1, 2)]
+            res[..., (1, 2)] = -res[..., (1, 2)]
         return np.flip(res, (0, 1))
     return res
 
@@ -155,14 +156,14 @@ def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=Fals
 
             pseudolabels_ = flip_image(pseudolabels, flip, mode='dist')
             pseudolabels_ = np.pad(pseudolabels_, ((0, 40), (0, 40), (0, 0)), mode='reflect')
-            pad_tmp = ~pseudolabels_[..., 1:]
-            pad_tmp[:ori_h, :ori_w, :] = pseudolabels_[:ori_h, :ori_w, :]
+            pad_tmp = -pseudolabels_[..., 1:]
+            pad_tmp[:ori_h, :ori_w, :] = pseudolabels_[:ori_h, :ori_w, 1:]
             pseudolabels_[..., 1:] = pad_tmp
             if contain_both:
                 fulllabels_ = flip_image(fulllabels, flip, mode='dist')
                 fulllabels_ = np.pad(fulllabels_, ((0, 40), (0, 40), (0, 0)), mode='reflect')
-                pad_tmp = ~fulllabels_[..., 1:]
-                pad_tmp[:ori_h, :ori_w, :] = fulllabels_[:ori_h, :ori_w, :]
+                pad_tmp = -fulllabels_.copy()[..., 1:]
+                pad_tmp[:ori_h, :ori_w, :] = fulllabels_[:ori_h, :ori_w, 1:]
                 fulllabels_[..., 1:] = pad_tmp
                 labels.append(np.concatenate((pseudolabels_, fulllabels_), axis=-1))
             else:
