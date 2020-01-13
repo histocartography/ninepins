@@ -303,23 +303,40 @@ def score(output_map, label, *metrics):
     
     return res
 
-if __name__ == "__main__":
-    from pathlib import Path
-    # from utils import show, get_valid_view
-    from dataset_reader import CoNSeP
-    # IDX = 3
-    prefix = 'out'
-    # prefix = 'curr_cell'
-    dataset = CoNSeP(download=False)
-    
-    m = 'DICE2'
-
+def run(prefix, metrics):
     for IDX in range(1, 15):
         output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
         # output_map = np.load('iteration/{}_{}.npy'.format(prefix, IDX))
 
         label, _ = dataset.read_labels(IDX, 'test')
+        for idx in range(1, int(label.max()) + 1):
+            if np.count_nonzero(label == idx) < 10:
+                label[label == idx] = 0
+                label[label > idx] -= 1
+
         # label = get_valid_view(label)
 
-        s = score(output_map, label, m)
-        print(s[m])
+        s = score(output_map, label, metrics)
+        print(s[metrics])
+
+if __name__ == "__main__":
+    from pathlib import Path
+    # from utils import show, get_valid_view
+    from dataset_reader import CoNSeP
+    # IDX = 3
+    # prefix = 'out'
+    # prefix = 'curr_cell_new'
+    # prefix = 'new_cell_new_l2'
+    # prefix = 'new_cell_new_instance'
+    dataset = CoNSeP(download=False)
+    
+    # m = 'DICE2'
+
+    for metrics in ['DICE2', 'avgIOU', 'IOU', 'AJI']:
+    # for metrics in ['AJI']:
+        print(metrics + "{")
+        # for prefix in ['curr_cell_new', 'new_cell_new_l2', 'new_cell_new_instance']:
+        for prefix in ['out_old']:
+            print(prefix + ":")
+            run(prefix, metrics)
+        print("}" + metrics)
