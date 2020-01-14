@@ -33,32 +33,34 @@ def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
     """pre-process the output maps"""
     th_seg = seg > h
     th_seg = Cascade() \
-                .append(binary_opening, disk(3)) \
+                .append(remove_small_objects, min_size=5) \
                 (th_seg)
+                # .append(binary_opening, disk(3)) \
 
     # show(th_seg)
 
     """combine the output maps"""
 
     """ - generate distance map"""
-    # grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
-    # grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-    # sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
-    # sig_diff = Cascade() \
-    #                 .append(median_filter, size=5) \
-    #                 (sig_diff)
-    # sig_diff[~th_seg] = 0
-
-
-    grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
-    grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
-    sig_diff = np.maximum(grad_vet, grad_hor)
+    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
+    sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
     sig_diff = Cascade() \
-                    .append(maximum_filter, size=3) \
-                    .append(median_filter, size=3) \
+                    .append(median_filter, size=5) \
                     (sig_diff)
-                    # .append(gaussian) \
+    # show(sig_diff * (seg > h))
     sig_diff[~th_seg] = 0
+
+
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
+    # sig_diff = np.maximum(grad_vet, grad_hor)
+    # sig_diff = Cascade() \
+    #                 .append(maximum_filter, size=3) \
+    #                 .append(median_filter, size=3) \
+    #                 (sig_diff)
+    #                 # .append(gaussian) \
+    # sig_diff[~th_seg] = 0
 
     # show(vet)
     # show(hor)
@@ -69,16 +71,17 @@ def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
         k = sig_diff.mean()
     markers = th_seg & (sig_diff <= k)
     # intermediate_prefix='markers/m'
-    # markers = Cascade() \
-    #                 .append(remove_small_objects, min_size=10) \
-    #                 (markers)
-
     markers = Cascade() \
-                    .append(binary_dilation, disk(3)) \
-                    .append(binary_fill_holes) \
-                    .append(binary_erosion, disk(3)) \
-                    .append(remove_small_objects, min_size=5) \
+                    .append(binary_opening, disk(1)) \
+                    .append(remove_small_objects, min_size=10) \
                     (markers)
+
+    # markers = Cascade() \
+    #                 .append(binary_dilation, disk(3)) \
+    #                 .append(binary_fill_holes) \
+    #                 .append(binary_erosion, disk(3)) \
+    #                 .append(remove_small_objects, min_size=5) \
+    #                 (markers)
     markers = label(markers)
     
     # show(th_seg)
@@ -293,8 +296,7 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     """initialization"""
     pred_seg = pred_seg > h
     pred_seg = Cascade() \
-                .append(binary_opening, disk(3)) \
-                .append(remove_small_objects, min_size=3) \
+                .append(remove_small_objects, min_size=5) \
                 (pred_seg)
     vet = pred_vet
     hor = pred_hor
@@ -359,6 +361,8 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     new_cell = new_seg
     new_seg = new_cell > 0
     return new_seg, new_cell
+
+    """!!!!below is discarded for now!!!!"""
 
     # show(label2rgb(new_seg_pred, bg_label=0))
 
@@ -454,29 +458,20 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
 def _test_instance_output():
     from skimage.io import imsave
 
-    prefix = 'output/out_old'
+    prefix = 'output/temp'
 
     use_patch_idx = False
+    # use_patch_idx = True
 
     for IDX in range(1, 15):
     # for IDX in range(1, 2367):
-    # observe_idx = 1
+    # observe_idx = 2
     # for IDX in range(observe_idx, observe_idx + 1):
-        res = get_instance_output(True, IDX, k=0.1, use_patch_idx=use_patch_idx)
+        # res = get_instance_output(True, IDX, k=0.1, use_patch_idx=use_patch_idx)
+        res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
         img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
 
-        # gd = np.gradient(res)
-        # gd = (gd[0] ** 2 + gd[1] ** 2) ** (0.5)
-        # gd = dilation(gd, disk(2))
-
-        # res[gd == 0] = 0
-
-        # rgbres = (label2rgb(res, bg_label=0) * 255).astype(np.uint8)
-        
-        # res = res[..., None]
-        # res = np.concatenate((res, res, res), axis=2)
-        # img = np.where(res == 0, img, rgbres).astype(np.uint8)
         img = draw_label_boundaries(img, res)
 
         imsave('{}_{}.png'.format(prefix, IDX), img)
