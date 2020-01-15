@@ -307,59 +307,58 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     # dilated_point_label = dilation(point_label, disk(2))
 
     """improve segmentation label"""
-    new_seg = np.zeros_like(pred_seg).astype(int)
-    # new_seg_curr = np.zeros_like(pred_seg).astype(int)
-    # new_seg_pred = new_seg_curr.copy()
-    # new_seg = np.zeros_like(pred_seg)
+    new_seg = np.zeros_like(pred_seg)
 
-    # labeled_pred_seg = label(pred_seg)
-    # labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
-    # point_label = label(point_mask)
-    # MAX_POINT_IDX = int(point_label.max())
-    # for idx in range(1, MAX_POINT_IDX + 1):
-    #     pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
-    #     if pred_cc_on_idx != 0:
-    #         new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
-    #     else:
-    #         curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
-    #         if curr_cc_on_idx != 0:
-    #             new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
-
-    labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
-
-    # labeled_pred_seg = label(pred_seg)
+    labeled_pred_seg = label(pred_seg)
     labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
     point_label = label(point_mask)
     MAX_POINT_IDX = int(point_label.max())
     for idx in range(1, MAX_POINT_IDX + 1):
         pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
         if pred_cc_on_idx != 0:
-            # new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
-            new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
+            new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
         else:
             curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
-            # new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
-            assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
-            connected_components = label(labeled_curr_seg == curr_cc_on_idx)
-            cc_on_idx = connected_components[point_label == idx][0]
-            new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
+            if curr_cc_on_idx != 0:
+                new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+
+
+    # new_seg = np.zeros_like(pred_seg).astype(int)
+    # # new_seg_curr = np.zeros_like(pred_seg).astype(int)
+    # # new_seg_pred = new_seg_curr.copy()
+    # labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
+    # labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+    # point_label = label(point_mask)
+    # MAX_POINT_IDX = int(point_label.max())
+    # for idx in range(1, MAX_POINT_IDX + 1):
+    #     pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+    #     if pred_cc_on_idx != 0:
+    #         # new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+    #         new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
+    #     else:
+    #         curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+    #         # new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+    #         assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
+    #         connected_components = label(labeled_curr_seg == curr_cc_on_idx)
+    #         cc_on_idx = connected_components[point_label == idx][0]
+    #         new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
             # new_seg = new_seg | (connected_components == cc_on_idx)
 
-    # new_cell = color_map * new_seg
+    new_cell = color_map * new_seg
 
-    base = new_seg.max()
-    for idx in np.unique(new_seg):
-        seg = new_seg == idx
-        if np.count_nonzero(seg & point_mask) > 1:
-            seg_cell = watershed(seg, markers=point_label, mask=seg)
-            step = seg_cell.max()
-            seg_cell[seg_cell > 0] += base
-            base += step
-            new_seg[seg] = seg_cell[seg]
+    # base = new_seg.max()
+    # for idx in np.unique(new_seg):
+    #     seg = new_seg == idx
+    #     if np.count_nonzero(seg & point_mask) > 1:
+    #         seg_cell = watershed(seg, markers=point_label, mask=seg)
+    #         step = seg_cell.max()
+    #         seg_cell[seg_cell > 0] += base
+    #         base += step
+    #         new_seg[seg] = seg_cell[seg]
 
-    new_seg = label(new_seg)
-    new_cell = new_seg
-    new_seg = new_cell > 0
+    # new_seg = label(new_seg)
+    # new_cell = new_seg
+    # new_seg = new_cell > 0
     return new_seg, new_cell
 
     """!!!!below is discarded for now!!!!"""
@@ -458,7 +457,7 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
 def _test_instance_output():
     from skimage.io import imsave
 
-    prefix = 'output/temp'
+    prefix = 'output/temp_test'
 
     use_patch_idx = False
     # use_patch_idx = True
