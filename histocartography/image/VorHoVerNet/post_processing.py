@@ -9,6 +9,7 @@ from skimage.io import imread, imsave
 from skimage.morphology import *
 from utils import *
 from Voronoi_label import get_voronoi_edges
+from dataset import get_pseudo_masks
 
 DEFAULT_H = 0.5
 DEFAULT_K = 1.7
@@ -163,8 +164,8 @@ def get_output_from_file(idx,
     if use_patch_idx:
         from_dir = root / ckpt / "{}{:04d}".format(prefix, idx)
         seg = np.load(str(from_dir / "seg.npy"))
-        vet = np.load(str(from_dir / "dist1.npy"))
-        hor = np.load(str(from_dir / "dist2.npy"))
+        hor = np.load(str(from_dir / "dist1.npy"))
+        vet = np.load(str(from_dir / "dist2.npy"))
         if transform is not None:
             vet = transform(vet, seg)
             hor = transform(hor, seg)
@@ -218,13 +219,18 @@ def get_output_from_model(img, model, transform=None):
             vet (numpy.ndarray[float]): vertical distance map output.
             hor (numpy.ndarray[float]): horizontal distance map output.
     """
-    model.eval()
     with torch.no_grad():
         pred = model(img)
     pred = pred.squeeze(0).detach().cpu().numpy()
-    return pred[..., 0], \
-            pred[..., 1], \
-            pred[..., 2]
+
+    seg = pred[..., 0]
+    hor = pred[..., 1]
+    vet = pred[..., 2]
+
+    if transform is not None:
+        vet = transform(vet, seg)
+        hor = transform(hor, seg)
+    return seg, vet, hor
 
 def get_original_image_from_file(idx,
                                 use_patch_idx=False, root='./inference',
@@ -453,6 +459,65 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     """=> new_cell"""
 
     return new_seg, new_cell
+
+def gen_next_iteration_labels(curr_iter, ckpt, split, patchsize=270, validsize=80, imagesize=1000):
+    from dataset_reader import CoNSeP
+    from skimage.io import imsave
+    from torch.utils.data import DataLoader
+
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+
+    # load datasets
+    dataset = CoNSeP(download=False, itr=curr_iter)
+    torch_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split=split, itr=curr_iter, doflip=False, contain_both=False, part=None))
+    data_loader = DataLoader(torch_dataset, batch_size=1, shuffle=False)
+
+    # load model
+    checkpoint = torch.load(ckpt, map_location=device)
+    print('model_name: {}'.format(ckpt))
+    model = Net()
+    model.load_state_dict(checkpoint['state_dict'])
+    model.to(device)
+    model.eval()
+
+    # compute dimensions
+    h, w = torch_dataset[0][0].shape[:2]
+    rows = int((h - patchsize) / validsize + 1)
+    cols = int((w - patchsize) / validsize + 1)
+    step = rows * cols
+    wholesize = (validsize * rows, validsize * cols)
+
+    # run
+    current_seg_mask = np.zeros(wholesize, dtype=bool)
+    seg = np.zeros(wholesize, dtype=np.float32)
+    vet = np.zeros(wholesize, dtype=np.float32)
+    hor = np.zeros(wholesize, dtype=np.float32)
+
+    for idx, (img, gt) in enumerate(data_loader):
+
+        gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()[..., 0]
+        i = idx // cols
+        j = idx % cols
+        current_seg_mask[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = gt
+
+        seg, vet, hor = get_output_from_model(img.to(device), model, transform=DEFAULT_TRANSFORM)
+
+        pred_seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg
+        pred_vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet
+        pred_hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor
+
+        if (idx + 1) % step == 0:
+            current_seg_mask = current_seg_mask[:imagesize, :imagesize]
+            pred_seg = pred_seg[:imagesize, :imagesize]
+            pred_vet = pred_vet[:imagesize, :imagesize]
+            pred_hor = pred_hor[:imagesize, :imagesize]
+            image_idx = (idx // step) + 1
+            point_mask = dataset.read_points(image_idx, split)
+            new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor)
+            assert new_seg.shape == (1000, 1000) and new_cell.shape == (1000, 1000), "I fucked up."
+            pseudo_masks = get_pseudo_masks(new_seg, point_mask, new_cell)
+            np.save(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1).replace('.png', '.npy'), pseudo_masks)
+            imsave(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1), pseudo_masks[..., 0])
 
 def _test_instance_output():
     from skimage.io import imsave

@@ -52,19 +52,21 @@ class CoNSeP_local(CoNSeP_common):
         self.root = root
         self.itr = itr
 
-    def get_path(self, idx, split, type_):
+    def get_path(self, idx, split, type_, itr=None):
         """
         Return the path for the requested data.
         Returns:
             path (str)
         """
+        if itr is None:
+            itr = self.itr
         path = self.root
         if type_ == "image":
             path += f"{split.capitalize()}/Images/{split}_{idx}.png"
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
         else:
-            path += f"{split.capitalize()}/PseudoLabels_{self.itr}/{split}_{idx}.png"
+            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.png"
         return path
 
     def read_image(self, idx, split):
