@@ -21,7 +21,7 @@ def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
     _channels = 3
     assert isinstance(pad_width, tuple), 'pad_width should be tuples in tuple'
     if mode == 'dist':
-        assert img.shape[-1] == _channels, 'img channel must be {}, got {}'.format(_channels, img.shape[-1])
+        assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
 
     ori_h, ori_w = img.shape[:2]
     padded = np.pad(img, pad_width=pad_width, mode='reflect')
@@ -43,7 +43,7 @@ def flip_image(img, flip, mode='normal', contain_both=False):
     _channels = 3
     assert mode in ('normal', 'dist'), 'mode must be either normal or dist'
     if mode == 'dist':
-        assert img.shape[-1] == _channels, 'img channel must be {}, got {}'.format(_channels, img.shape[-1])
+        assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
 
     res = img.copy()
     if flip == 1:
@@ -96,7 +96,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
     IDX_LIMITS = data_reader.IDX_LIMITS
     
     for i in range(1, IDX_LIMITS[split] + 1):
-        print('Generating {} dataset... {:02d}/{:02d}'.format(split, i, IDX_LIMITS[split]), end='\r')
+        print(f'Generating {split} dataset... {i:02d}/{IDX_LIMITS[split]:02d}', end='\r')
         
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
@@ -116,16 +116,16 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
             pseudo_mask = get_pseudo_masks(seg_mask_w_edges, point_mask, lab, contain_both=False)
 
         # save npy file (and png file for visualization)
-        path_pseudo = '{}/{}/PseudoLabels_{}'.format(root, split.capitalize(), itr)
+        path_pseudo = f'{root}/{split.capitalize()}/PseudoLabels_{itr}'
         os.makedirs(path_pseudo, exist_ok=True)
-        imsave('{}/{}_{}.png'.format(path_pseudo, split, i), seg_mask_w_edges.astype(np.uint8) * 255)
-        np.save('{}/{}_{}.npy'.format(path_pseudo, split, i), pseudo_mask)
+        imsave(f'{path_pseudo}/{split}_{i}.png', seg_mask_w_edges.astype(np.uint8) * 255)
+        np.save(f'{path_pseudo}/{split}_{i}.npy', pseudo_mask)
         if contain_both:
             seg_gt = lab > 0
-            path_full = '{}/{}/FullLabels_{}'.format(root, split.capitalize(), itr)
+            path_full = f'{root}/{split.capitalize()}/FullLabels'
             os.makedirs(path_full, exist_ok=True)
-            imsave('{}/{}_{}.png'.format(path_full, split, i), seg_gt.astype(np.uint8) * 255)
-            np.save('{}/{}_{}.npy'.format(path_full, split, i), full_mask)
+            imsave(f'{path_full}/{split}_{i}.png', seg_gt.astype(np.uint8) * 255)
+            np.save(f'{path_full}/{split}_{i}.npy', full_mask)
     print('')
 
 def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=False, contain_both=False, part=None):
@@ -155,17 +155,17 @@ def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=Fals
     # fulllabels = []
     # pseudolabels = []
     for i, idx in enumerate(indice):
-        print('Loading {} dataset... {:02d}/{:02d}'.format(split, i + 1, len(indice)), end='\r')
+        print(f'Loading {split} dataset... {i + 1:02d}/{len(indice):02d}', end='\r')
         # load original image
         image = data_reader.read_image(idx, split) / 255
         # load pseudo labels
         label_path = data_reader.get_path(idx, split, 'label')
-        pseudolabel_path = label_path.replace('Labels', 'PseudoLabels_{}'.format(itr))
+        pseudolabel_path = label_path.replace('Labels', f'PseudoLabels_{itr}')
         pseudolabels = np.load(pseudolabel_path)
         ori_h, ori_w = pseudolabels.shape[:2]
         # load full labels (optional)
         if contain_both:
-            fulllabel_path = label_path.replace('Labels', 'FullLabels_{}'.format(itr))
+            fulllabel_path = label_path.replace('Labels', 'FullLabels')
             fulllabels = np.load(fulllabel_path)
 
         flip_idx = range(4) if doflip else (0, )
