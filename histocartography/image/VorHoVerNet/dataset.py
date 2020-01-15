@@ -155,7 +155,7 @@ def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=Fals
     # fulllabels = []
     # pseudolabels = []
     for i, idx in enumerate(indice):
-        print(f'Loading {split} dataset... {i + 1:02d}/{len(indice):02d}', end='\r')
+        print(f'Loading {split} dataset... {i+1:02d}/{len(indice):02d}', end='\r')
         # load original image
         image = data_reader.read_image(idx, split) / 255
         # load pseudo labels
