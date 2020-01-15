@@ -8,6 +8,27 @@ from pseudo_label import gen_pseudo_label
 from utils import get_point_from_instance
 
 
+def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
+    """
+    Pad input DISTANCE MAP and fix the rule error of value due to padding operations.
+
+    Args:
+        img (numpy.ndarray): input DISTANCE MAP (horizontal or vertical maps, which values are from -1.0 to 1.0)
+        pad_width (tuple): see pad_width in numpy.pad function
+    Returns:
+        (numpy.ndarray): result image
+    """
+    _channels = 3
+    assert isinstance(pad_width, tuple), 'pad_width should be tuples in tuple'
+    if mode == 'dist':
+        assert img.shape[-1] == _channels, 'img channel must be {}, got {}'.format(_channels, img.shape[-1])
+
+    ori_h, ori_w = img.shape[:2]
+    padded = np.pad(img, pad_width=pad_width, mode='reflect')
+    padded[:, ori_w:, 1] = -padded[:, ori_w:, 1]
+    padded[ori_h:, :, 2] = -padded[ori_h:, :, 2]
+    return padded
+
 def flip_image(img, flip, mode='normal', contain_both=False):
     """
     Return three other image copies through flip operation.
@@ -20,7 +41,7 @@ def flip_image(img, flip, mode='normal', contain_both=False):
         (numpy.ndarray): flipped image or distance map
     """
     _channels = 3
-    assert mode in ['normal', 'dist'], 'mode must be either normal or dist'
+    assert mode in ('normal', 'dist'), 'mode must be either normal or dist'
     if mode == 'dist':
         assert img.shape[-1] == _channels, 'img channel must be {}, got {}'.format(_channels, img.shape[-1])
 
@@ -155,19 +176,13 @@ def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=Fals
             images.append(image_)
 
             pseudolabels_ = flip_image(pseudolabels, flip, mode='dist')
-            pseudolabels_ = np.pad(pseudolabels_, ((0, 40), (0, 40), (0, 0)), mode='reflect')
-            pad_tmp = -pseudolabels_[..., 1:]
-            pad_tmp[:ori_h, :ori_w, :] = pseudolabels_[:ori_h, :ori_w, 1:]
-            pseudolabels_[..., 1:] = pad_tmp
+            pseudolabels_ = padninvert(pseudolabels_, pad_width=((0, 40), (0, 40), (0, 0)))
             if contain_both:
                 fulllabels_ = flip_image(fulllabels, flip, mode='dist')
-                fulllabels_ = np.pad(fulllabels_, ((0, 40), (0, 40), (0, 0)), mode='reflect')
-                pad_tmp = -fulllabels_.copy()[..., 1:]
-                pad_tmp[:ori_h, :ori_w, :] = fulllabels_[:ori_h, :ori_w, 1:]
-                fulllabels_[..., 1:] = pad_tmp
+                fulllabels_ = padninvert(fulllabels_, pad_width=((0, 40), (0, 40), (0, 0)))
                 labels.append(np.concatenate((pseudolabels_, fulllabels_), axis=-1))
             else:
-                labels.append(pseudolabels)
+                labels.append(pseudolabels_)
     print('')
     return images, labels
 
