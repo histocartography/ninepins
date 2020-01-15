@@ -189,6 +189,7 @@ def get_valid_view(image, patch_size=270, valid_size=80, requested_size=1000):
 def scale(img, vmax, vmin):
     """
     Scale an image into [vmin, vmax]. (Positive and negative values are scaled independently.)
+    ----- img no copy -----
     Args:
         img (numpy.ndarray[any]): the image.
         vmax (number): maximum value.
