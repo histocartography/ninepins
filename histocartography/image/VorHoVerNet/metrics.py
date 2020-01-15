@@ -126,7 +126,7 @@ def nucleuswise_stats(output_map, label):
 
     Under nucleus-wise condition, we can only define TP, FN, and FP (and thus Precision and Sensitivity).
     Definition of TP:
-        # of annotated nuclei covered by a predicted nucleus with more than 70% overlap
+        # of annotated nuclei that have more than 0.5 IOU with a predicted nucleus
         NOTE: # is different in model output and label,
             since one nucleus in prediction could cover multiple nuclei in label and vice versa.
     Definition of FN:
@@ -139,6 +139,8 @@ def nucleuswise_stats(output_map, label):
     MAX_LABEL_IDX = int(label.max())
     TP = 0
     hit = [False] * int(output_map.max())
+    FN_list = []
+    sum_IOU = 0
 
     for idx in range(1, MAX_LABEL_IDX + 1):
         overlapped_indices = np.unique(output_map[label == idx])
@@ -146,16 +148,26 @@ def nucleuswise_stats(output_map, label):
             continue
         B = (label == idx)
 
+        matched = False
+
         for overlapped_index in overlapped_indices:
             A = (output_map == overlapped_index)
             I = A & B
+            U = A | B
 
-            perc = np.count_nonzero(I) / np.count_nonzero(B)
+            IOU = np.count_nonzero(I) / np.count_nonzero(U)
 
-            if perc >= 0.7:
+            if IOU > 0.5:
                 TP += 1
                 hit[overlapped_index - 1] = True
+                matched = True
+                sum_IOU += IOU
                 break
+
+        if not matched:
+            FN_list.append(idx)
+
+    FP_list = [(i+1) for i, hit_ in enumerate(hit) if not hit_]
 
     TP_pred = np.count_nonzero(hit)
 
@@ -170,6 +182,9 @@ def nucleuswise_stats(output_map, label):
         'TP_pred': TP_pred,
         'FP': FP,
         'FN': FN,
+        'FP_list': FP_list,
+        'FN_list': FN_list,
+        'sum_IOU': sum_IOU,
         'Precision': Precision,
         'Sensitivity': Sensitivity
     }
@@ -271,6 +286,27 @@ def AJI(output_map, label):
 
     return AI / AU
 
+def DQ(output_map, label, stats=None):
+    if stats is None:
+        stats = nucleuswise_stats(output_map, label)
+    TP = stats['TP']
+    FP = stats['FP']
+    FN = stats['FN']
+    return TP / (TP + 0.5*FP + 0.5*FN)
+
+def SQ(output_map, label, stats=None):
+    if stats is None:
+        stats = nucleuswise_stats(output_map, label)
+    sum_IOU = stats['sum_IOU']
+    TP = stats['TP']
+    return sum_IOU / TP
+
+def PQ(output_map, label):
+    stats = nucleuswise_stats(output_map, label)
+    dq = DQ(output_map, label, stats=stats)
+    sq = SQ(output_map, label, stats=stats)
+    return dq * sq
+
 # Mapping from metrics name to computation function
 VALID_METRICS = {
     'IOU': overall_IOU,
@@ -278,7 +314,10 @@ VALID_METRICS = {
     'pixelwise': pixelwise_stats,
     'nucleuswise': nucleuswise_stats,
     'DICE2': DICE2,
-    'AJI': AJI
+    'AJI': AJI,
+    'DQ': DQ,
+    'SQ': SQ,
+    'PQ': PQ
 }
 
 def score(output_map, label, *metrics):
@@ -303,23 +342,38 @@ def score(output_map, label, *metrics):
     
     return res
 
-if __name__ == "__main__":
-    from pathlib import Path
-    # from utils import show, get_valid_view
-    from dataset_reader import CoNSeP
-    # IDX = 3
-    prefix = 'out'
-    # prefix = 'curr_cell'
-    dataset = CoNSeP(download=False)
-    
-    m = 'DICE2'
-
+def run(prefix, metrics):
     for IDX in range(1, 15):
         output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
         # output_map = np.load('iteration/{}_{}.npy'.format(prefix, IDX))
 
         label, _ = dataset.read_labels(IDX, 'test')
-        # label = get_valid_view(label)
+        for idx in range(1, int(label.max()) + 1):
+            if np.count_nonzero(label == idx) < 10:
+                label[label == idx] = 0
+                label[label > idx] -= 1
 
-        s = score(output_map, label, m)
-        print(s[m])
+        s = score(output_map, label, metrics)
+        print(s[metrics])
+
+if __name__ == "__main__":
+    from pathlib import Path
+    # from utils import show, get_valid_view
+    from dataset_reader import CoNSeP
+    # IDX = 3
+    # prefix = 'out'
+    # prefix = 'curr_cell_new'
+    # prefix = 'new_cell_new_l2'
+    # prefix = 'new_cell_new_instance'
+    dataset = CoNSeP(download=False)
+    
+    # m = 'DICE2'
+
+    # for metrics in ['DICE2', 'avgIOU', 'IOU', 'AJI']:
+    for metrics in ['DQ', 'SQ', 'PQ']:
+        print(metrics + "{")
+        # for prefix in ['curr_cell_new', 'new_cell_new_l2', 'new_cell_new_instance']:
+        for prefix in ['temp']:
+            print(prefix + ":")
+            run(prefix, metrics)
+        print("}" + metrics)
