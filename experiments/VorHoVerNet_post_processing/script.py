@@ -77,6 +77,8 @@ def main(arguments):
     DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
 
+    os.makedirs(OUT_PATH, exist_ok=True)
+
     dataset = CoNSeP(download=False, root=DATASET_PATH)
 
     metrics = VALID_METRICS.keys()

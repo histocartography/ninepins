@@ -544,6 +544,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
 def _test_instance_output():
     from skimage.io import imsave
 
+    os.makedirs('output', exist_ok=True)
+
     prefix = 'output/temp_test'
 
     use_patch_idx = False

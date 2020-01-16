@@ -89,6 +89,8 @@ def main(arguments):
     PREFIX = arguments.prefix
     METHOD = arguments.method
 
+    os.makedirs(OUT_PATH, exist_ok=True)
+
     dataset = CoNSeP(download=False, root=DATASET_PATH)
 
     metrics = VALID_METRICS.keys()
