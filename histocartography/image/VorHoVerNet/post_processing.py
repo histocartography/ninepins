@@ -132,7 +132,8 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
                         root='./inference', ckpt='model_009_ckpt_epoch_18',
-                        prefix='patch', patchsize=270, validsize=80, inputsize=1230, imagesize=1000):
+                        split='test', prefix='patch',
+                        patchsize=270, validsize=80, inputsize=1230, imagesize=1000):
     """
     Read output from file.
     Args:
@@ -147,6 +148,7 @@ def get_output_from_file(idx,
         root (str): root directory of the output files.
         ckpt (str): name of the checkpoint used to generate the output.
         prefix (str): prefix of the file names.
+        split (str): split of dataset to use. 
         patchsize (int): size of the input patch of model.
         validsize (int): size of the output patch of model.
         inputsize (int): size of the padded whole image.
@@ -162,7 +164,7 @@ def get_output_from_file(idx,
     assert isinstance(root, Path), "{} is not a Path object or string".format(root)
 
     if use_patch_idx:
-        from_dir = root / ckpt / "{}{:04d}".format(prefix, idx)
+        from_dir = root / ckpt / split / "{}{:04d}".format(prefix, idx)
         seg = np.load(str(from_dir / "seg.npy"))
         hor = np.load(str(from_dir / "dist1.npy"))
         vet = np.load(str(from_dir / "dist2.npy"))
@@ -190,7 +192,7 @@ def get_output_from_file(idx,
         for i in range(rows):
             for j in range(cols):
                 index = base + i * cols + j + 1
-                from_dir = root / ckpt / "{}{:04d}".format(prefix, index)
+                from_dir = root / ckpt / split / "{}{:04d}".format(prefix, index)
                 seg_ = np.load(str(from_dir / "seg.npy"))
                 vet_ = np.load(str(from_dir / "dist1.npy"))
                 hor_ = np.load(str(from_dir / "dist2.npy"))
@@ -235,6 +237,7 @@ def get_output_from_model(img, model, transform=None):
 def get_original_image_from_file(idx,
                                 use_patch_idx=False, root='./inference',
                                 ckpt='model_009_ckpt_epoch_18', prefix='patch',
+                                split='test',
                                 patchsize=270, validsize=80,
                                 inputsize=1230, imagesize=1000):
     """
@@ -245,6 +248,7 @@ def get_original_image_from_file(idx,
         root (str): root directory of the output files.
         ckpt (str): name of the checkpoint used to generate the output.
         prefix (str): prefix of the file names.
+        split (str): split of dataset to use.
         patchsize (int): size of the input patch of model.
         validsize (int): size of the output patch of model.
         imagesize (int): size of the whole image in dataset.
@@ -256,7 +260,7 @@ def get_original_image_from_file(idx,
         root = Path(root)
     assert isinstance(root, Path), "{} is not a Path object or string".format(root)
     if use_patch_idx:
-        from_dir = root / ckpt / "{}{:04d}".format(prefix, idx)
+        from_dir = root / ckpt / split / "{}{:04d}".format(prefix, idx)
         return imread(str(from_dir / "ori.png"))
     else:
         if isinstance(inputsize, int):
@@ -275,7 +279,7 @@ def get_original_image_from_file(idx,
 
         for i in range(rows):
             for j in range(cols):
-                from_dir = root / ckpt / "{}{:04d}".format(prefix, base + i * cols + j + 1)
+                from_dir = root / ckpt / split / "{}{:04d}".format(prefix, base + i * cols + j + 1)
                 img_ = imread(str(from_dir / "ori.png"))
                 
                 img[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = img_
@@ -284,7 +288,7 @@ def get_original_image_from_file(idx,
 
         return img[:ih, :iw, ...]
 
-def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=DEFAULT_H):
+def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=DEFAULT_H, method='Voronoi'):
     """
     Improve the pseudo labels with current pseudo labels and model output.
     Args:
@@ -293,6 +297,8 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
         pred_seg (numpy.ndarray[float]): predicted segmentation mask.
         pred_vet (numpy.ndarray[float]): predicted vertical distance map.
         pred_hor (numpy.ndarray[float]): predicted horizontal distance map.
+        h (float): threshold for segmentation mask.
+        method (str): method to use. [Voronoi, instance]
     Returns:
         (tuple)
             new_seg (numpy.ndarray[bool]): new segmentation mask.
@@ -313,58 +319,62 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     # dilated_point_label = dilation(point_label, disk(2))
 
     """improve segmentation label"""
-    new_seg = np.zeros_like(pred_seg)
+    if method == 'Voronoi':
+        new_seg = np.zeros_like(pred_seg)
 
-    labeled_pred_seg = label(pred_seg)
-    labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
-    point_label = label(point_mask)
-    MAX_POINT_IDX = int(point_label.max())
-    for idx in range(1, MAX_POINT_IDX + 1):
-        pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
-        if pred_cc_on_idx != 0:
-            new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
-        else:
-            curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
-            if curr_cc_on_idx != 0:
-                new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+        labeled_pred_seg = label(pred_seg)
+        labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+        point_label = label(point_mask)
+        MAX_POINT_IDX = int(point_label.max())
+        for idx in range(1, MAX_POINT_IDX + 1):
+            pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+            if pred_cc_on_idx != 0:
+                new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+            else:
+                curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+                if curr_cc_on_idx != 0:
+                    new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
 
+        new_cell = color_map * new_seg
 
-    # new_seg = np.zeros_like(pred_seg).astype(int)
-    # # new_seg_curr = np.zeros_like(pred_seg).astype(int)
-    # # new_seg_pred = new_seg_curr.copy()
-    # labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
-    # labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
-    # point_label = label(point_mask)
-    # MAX_POINT_IDX = int(point_label.max())
-    # for idx in range(1, MAX_POINT_IDX + 1):
-    #     pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
-    #     if pred_cc_on_idx != 0:
-    #         # new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
-    #         new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
-    #     else:
-    #         curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
-    #         # new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
-    #         assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
-    #         connected_components = label(labeled_curr_seg == curr_cc_on_idx)
-    #         cc_on_idx = connected_components[point_label == idx][0]
-    #         new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
-            # new_seg = new_seg | (connected_components == cc_on_idx)
+    elif method == 'instance':
+        new_seg = np.zeros_like(pred_seg).astype(int)
+        # new_seg_curr = np.zeros_like(pred_seg).astype(int)
+        # new_seg_pred = new_seg_curr.copy()
+        labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
+        labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+        point_label = label(point_mask)
+        MAX_POINT_IDX = int(point_label.max())
+        for idx in range(1, MAX_POINT_IDX + 1):
+            pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+            if pred_cc_on_idx != 0:
+                # new_seg = new_seg | (labeled_pred_seg == pred_cc_on_idx)
+                new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
+            else:
+                curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+                # new_seg = new_seg | (labeled_curr_seg == curr_cc_on_idx)
+                assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
+                connected_components = label(labeled_curr_seg == curr_cc_on_idx)
+                cc_on_idx = connected_components[point_label == idx][0]
+                new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
+                new_seg = new_seg | (connected_components == cc_on_idx)
 
-    new_cell = color_map * new_seg
+        base = new_seg.max()
+        for idx in np.unique(new_seg):
+            seg = new_seg == idx
+            if np.count_nonzero(seg & point_mask) > 1:
+                seg_cell = watershed(seg, markers=point_label, mask=seg)
+                step = seg_cell.max()
+                seg_cell[seg_cell > 0] += base
+                base += step
+                new_seg[seg] = seg_cell[seg]
 
-    # base = new_seg.max()
-    # for idx in np.unique(new_seg):
-    #     seg = new_seg == idx
-    #     if np.count_nonzero(seg & point_mask) > 1:
-    #         seg_cell = watershed(seg, markers=point_label, mask=seg)
-    #         step = seg_cell.max()
-    #         seg_cell[seg_cell > 0] += base
-    #         base += step
-    #         new_seg[seg] = seg_cell[seg]
+        new_seg = label(new_seg)
+        new_cell = new_seg
+        new_seg = new_cell > 0
+    else:
+        raise ValueError('Invalid method')
 
-    # new_seg = label(new_seg)
-    # new_cell = new_seg
-    # new_seg = new_cell > 0
     return new_seg, new_cell
 
     """!!!!below is discarded for now!!!!"""
@@ -558,7 +568,7 @@ def _test_improve_pseudo_labels():
     from dataset_reader import CoNSeP
     # from utils import get_valid_view
     from skimage.io import imsave
-    from compare import draw_label_boundaries
+    from utils import draw_label_boundaries
 
     # IDX = 2
     SPLIT = 'test'
@@ -568,7 +578,7 @@ def _test_improve_pseudo_labels():
         ori = get_original_image_from_file(IDX)
 
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT)
-        current_seg_mask = get_valid_view(current_seg_mask)
+        # current_seg_mask = get_valid_view(current_seg_mask)
         current_seg_mask = current_seg_mask > 0
         # current_seg_mask = get_valid_view(current_seg_mask)
 
