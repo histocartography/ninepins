@@ -5,7 +5,7 @@ from scipy.ndimage.morphology import distance_transform_edt
 from skimage.color import label2rgb
 from skimage.io import imsave
 from skimage.morphology import dilation, disk
-from histocargraphy.image.VorHoVerNet.constants import LABEL_COLOR_LIST
+from histocartography.image.VorHoVerNet.constants import LABEL_COLOR_LIST
 
 class Cascade:
     """

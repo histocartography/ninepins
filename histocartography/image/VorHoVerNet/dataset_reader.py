@@ -6,8 +6,8 @@ from minio import Minio
 from minio.error import ResponseError
 from PIL import Image
 from skimage.io import imread, imsave
-from histocargraphy.image.VorHoVerNet.constants import DATASET_IDX_LIMITS
-from histocargraphy.image.VorHoVerNet.utils import get_point_from_instance
+from histocartography.image.VorHoVerNet.constants import DATASET_IDX_LIMITS
+from histocartography.image.VorHoVerNet.utils import get_point_from_instance
 
 class CoNSeP:
     """

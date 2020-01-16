@@ -1,10 +1,10 @@
 import numpy as np
 from skimage.morphology import binary_dilation, dilation, disk, label
-from histocargraphy.image.VorHoVerNet.color_label import get_cluster_label
-from histocargraphy.image.VorHoVerNet.performance import OutTime
-from histocargraphy.image.VorHoVerNet.utils import (draw_boundaries,
+from histocartography.image.VorHoVerNet.color_label import get_cluster_label
+from histocartography.image.VorHoVerNet.performance import OutTime
+from histocartography.image.VorHoVerNet.utils import (draw_boundaries,
                                                     get_point_from_instance)
-from histocargraphy.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
+from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 
 def gen_pseudo_label(image, point_mask, return_edge=False):
