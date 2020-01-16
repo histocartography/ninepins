@@ -12,9 +12,9 @@ import pytorch_lightning as pl
 
 # from torch.utils.data import DataLoader
 # from torch.utils.data.dataset import random_split
-from dataset import CoNSeP_cropped, data_reader
-from brontes import Brontes
-from model.vorhover_net import Net, CustomLoss
+from histocargraphy.image.VorHoVerNet.dataset import CoNSeP_cropped, data_reader
+from histocargraphy.image.VorHoVerNet.brontes import Brontes
+from histocargraphy.image.VorHoVerNet.model.vorhover_net import Net, CustomLoss
 
 # parse parameters
 parser = argparse.ArgumentParser()

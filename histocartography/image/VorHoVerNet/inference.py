@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from skimage.io import imsave
-from dataset import CoNSeP_cropped, data_reader
-from model.vorhover_net import CustomLoss, Net
-from utils import scale, shift_and_scale
+from histocargraphy.image.VorHoVerNet.dataset import CoNSeP_cropped, data_reader
+from histocargraphy.image.VorHoVerNet.model.vorhover_net import CustomLoss, Net
+from histocargraphy.image.VorHoVerNet.utils import scale, shift_and_scale
 
 
 def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):

@@ -1,5 +1,5 @@
 import numpy as np
-from performance import OutTime
+from histocargraphy.image.VorHoVerNet.performance import OutTime
 
 def get_voronoi_edges(point_mask, view=False, extra_out=None, l2_norm=True):
     '''

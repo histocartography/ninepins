@@ -7,9 +7,9 @@ from skimage.color import label2rgb
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.io import imread, imsave
 from skimage.morphology import *
-from utils import *
-from Voronoi_label import get_voronoi_edges
-from dataset import get_pseudo_masks
+from histocargraphy.image.VorHoVerNet.dataset import get_pseudo_masks
+from histocargraphy.image.VorHoVerNet.utils import *
+from histocargraphy.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 DEFAULT_H = 0.5
 DEFAULT_K = 1.7

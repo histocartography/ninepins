@@ -4,8 +4,8 @@ from scipy.ndimage.morphology import binary_fill_holes
 from skimage.color import rgb2hed
 from skimage.morphology import *
 from sklearn.cluster import KMeans
-from performance import OutTime
-from utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient
+from histocargraphy.image.VorHoVerNet.performance import OutTime
+from histocargraphy.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient
 
 CLUSTER_FEATURES = "CD"
 # C: rgb, D: distance, S: he

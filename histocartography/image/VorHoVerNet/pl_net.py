@@ -4,7 +4,7 @@ import random
 import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
-from utils import scale
+from histocargraphy.image.VorHoVerNet.utils import scale
 
 class plNet(pl.LightningModule):
 

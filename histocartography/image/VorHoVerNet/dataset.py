@@ -2,10 +2,10 @@ import os
 import numpy as np
 from skimage.io import imread, imsave
 from torch.utils.data import Dataset
-from dataset_reader import *
-from distance_maps import get_distancemaps
-from pseudo_label import gen_pseudo_label
-from utils import get_point_from_instance
+from histocargraphy.image.VorHoVerNet.dataset_reader import *
+from histocargraphy.image.VorHoVerNet.distance_maps import get_distancemaps
+from histocargraphy.image.VorHoVerNet.pseudo_label import gen_pseudo_label
+from histocargraphy.image.VorHoVerNet.utils import get_point_from_instance
 
 
 def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
