@@ -1,5 +1,5 @@
 import numpy as np
-from Voronoi_label import get_voronoi_edges
+from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 def get_boundary(img):
     """
