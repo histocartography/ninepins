@@ -12,7 +12,7 @@ from histocartography.image.VorHoVerNet.utils import *
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 DEFAULT_H = 0.5
-DEFAULT_K = 1.7
+DEFAULT_K = 2
 
 def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
     image[seg <= th] = 0
@@ -34,9 +34,9 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     """pre-process the output maps"""
     th_seg = seg > h
     th_seg = Cascade() \
+                .append(binary_opening, disk(3)) \
                 .append(remove_small_objects, min_size=5) \
                 (th_seg)
-                # .append(binary_opening, disk(3)) \
 
     # show(th_seg)
 
@@ -86,7 +86,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     markers = label(markers)
     
     # show(th_seg)
-    # show(markers)
+    show(markers)
 
     """ - run watershed on distance map with markers"""
     res = watershed(sig_diff, markers=markers, mask=th_seg)
@@ -543,20 +543,21 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
 
 def _test_instance_output():
     from skimage.io import imsave
+    import os
 
     os.makedirs('output', exist_ok=True)
 
-    prefix = 'output/temp_test'
+    prefix = 'output/mlflow_swap'
 
     use_patch_idx = False
     # use_patch_idx = True
 
-    for IDX in range(1, 15):
+    for IDX in range(1, 2):
     # for IDX in range(1, 2367):
     # observe_idx = 2
     # for IDX in range(observe_idx, observe_idx + 1):
-        # res = get_instance_output(True, IDX, k=0.1, use_patch_idx=use_patch_idx)
-        res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
+        res = get_instance_output(True, IDX, k=2, use_patch_idx=use_patch_idx)
+        # res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
         img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
         np.save('{}_{}.npy'.format(prefix, IDX), res)
 
