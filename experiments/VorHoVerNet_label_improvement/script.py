@@ -6,6 +6,7 @@ import logging
 import argparse
 import numpy as np
 import sys
+import os
 import mlflow
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
