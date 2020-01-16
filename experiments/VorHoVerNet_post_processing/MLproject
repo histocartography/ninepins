@@ -6,5 +6,5 @@ entry_points:
   main:
     parameters:
       split: {type: string, default: test}
-      prefix: {type: string, default: temp}
+      prefix: string
     command: "python3 script.py -s {split} -p {prefix}"
