@@ -21,13 +21,13 @@ def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
 
 DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
 
-def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
+def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
         seg (numpy.ndarray[float]): segmentation output.
-        vet (numpy.ndarray[float]): vertical distance map output.
         hor (numpy.ndarray[float]): horizontal distance map output.
+        vet (numpy.ndarray[float]): vertical distance map output.
     Returns:
         instance_map (numpy.ndarray[int]): instance map
     """
@@ -43,9 +43,9 @@ def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
     """combine the output maps"""
 
     """ - generate distance map"""
-    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
     grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-    sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
+    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
     sig_diff = Cascade() \
                     .append(median_filter, size=5) \
                     (sig_diff)
@@ -53,9 +53,9 @@ def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
     sig_diff[~th_seg] = 0
 
 
-    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
     # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
-    # sig_diff = np.maximum(grad_vet, grad_hor)
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # sig_diff = np.maximum(grad_hor, grad_vet)
     # sig_diff = Cascade() \
     #                 .append(maximum_filter, size=3) \
     #                 .append(median_filter, size=3) \
@@ -63,8 +63,8 @@ def _get_instance_output(seg, vet, hor, h=DEFAULT_H, k=DEFAULT_K):
     #                 # .append(gaussian) \
     # sig_diff[~th_seg] = 0
 
-    # show(vet)
     # show(hor)
+    # show(vet)
     # show(sig_diff)
 
     """ - generate markers"""
@@ -121,13 +121,13 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
     """
     """read files or inference to get individual output"""
     if from_file:
-        seg, vet, hor = get_output_from_file(*args,
+        seg, hor, vet = get_output_from_file(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
     else:
-        seg, vet, hor = get_output_from_model(*args,
+        seg, hor, vet = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
-    return _get_instance_output(seg, vet, hor, h=h, k=k)
+    return _get_instance_output(seg, hor, vet, h=h, k=k)
 
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
@@ -156,8 +156,8 @@ def get_output_from_file(idx,
     Returns:
         (tuple):
             seg (numpy.ndarray[float]): segmentation output.
-            vet (numpy.ndarray[float]): vertical distance map output.
             hor (numpy.ndarray[float]): horizontal distance map output.
+            vet (numpy.ndarray[float]): vertical distance map output.
     """
     if isinstance(root, str):
         root = Path(root)
@@ -169,9 +169,9 @@ def get_output_from_file(idx,
         hor = np.load(str(from_dir / "dist1.npy"))
         vet = np.load(str(from_dir / "dist2.npy"))
         if transform is not None:
-            vet = transform(vet, seg)
             hor = transform(hor, seg)
-        return seg, vet, hor
+            vet = transform(vet, seg)
+        return seg, hor, vet
     else:
         if isinstance(inputsize, int):
             inputsize = (inputsize, inputsize)
@@ -186,28 +186,28 @@ def get_output_from_file(idx,
         wholesize = (validsize * rows, validsize * cols)
 
         seg = np.zeros(wholesize, dtype=float)
-        vet = np.zeros(wholesize, dtype=float)
         hor = np.zeros(wholesize, dtype=float)
+        vet = np.zeros(wholesize, dtype=float)
 
         for i in range(rows):
             for j in range(cols):
                 index = base + i * cols + j + 1
                 from_dir = root / ckpt / split / "{}{:04d}".format(prefix, index)
                 seg_ = np.load(str(from_dir / "seg.npy"))
-                vet_ = np.load(str(from_dir / "dist1.npy"))
-                hor_ = np.load(str(from_dir / "dist2.npy"))
+                hor_ = np.load(str(from_dir / "dist1.npy"))
+                vet_ = np.load(str(from_dir / "dist2.npy"))
 
                 if transform is not None:
-                    vet_ = transform(vet_, seg_)
                     hor_ = transform(hor_, seg_)
+                    vet_ = transform(vet_, seg_)
                 
                 seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg_
-                vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
                 hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor_
+                vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
 
         ih, iw = imagesize
 
-        return seg[:ih, :iw, ...], vet[:ih, :iw, ...], hor[:ih, :iw, ...]
+        return seg[:ih, :iw, ...], hor[:ih, :iw, ...], vet[:ih, :iw, ...]
 
 def get_output_from_model(img, model, transform=None):
     """
@@ -218,8 +218,8 @@ def get_output_from_model(img, model, transform=None):
     Returns:
         (tuple):
             seg (numpy.ndarray[float]): segmentation output.
-            vet (numpy.ndarray[float]): vertical distance map output.
             hor (numpy.ndarray[float]): horizontal distance map output.
+            vet (numpy.ndarray[float]): vertical distance map output.
     """
     with torch.no_grad():
         pred = model(img)
@@ -230,9 +230,9 @@ def get_output_from_model(img, model, transform=None):
     vet = pred[..., 2]
 
     if transform is not None:
-        vet = transform(vet, seg)
         hor = transform(hor, seg)
-    return seg, vet, hor
+        vet = transform(vet, seg)
+    return seg, hor, vet
 
 def get_original_image_from_file(idx,
                                 use_patch_idx=False, root='./inference',
@@ -288,15 +288,15 @@ def get_original_image_from_file(idx,
 
         return img[:ih, :iw, ...]
 
-def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred_hor, h=DEFAULT_H, method='Voronoi'):
+def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_hor, pred_vet, h=DEFAULT_H, method='Voronoi'):
     """
     Improve the pseudo labels with current pseudo labels and model output.
     Args:
         current_seg_mask (numpy.ndarray[bool]): current segmentation mask.
         point_mask (numpy.ndarray[bool]): point mask. (True at nuclear point, False at background)
         pred_seg (numpy.ndarray[float]): predicted segmentation mask.
-        pred_vet (numpy.ndarray[float]): predicted vertical distance map.
         pred_hor (numpy.ndarray[float]): predicted horizontal distance map.
+        pred_vet (numpy.ndarray[float]): predicted vertical distance map.
         h (float): threshold for segmentation mask.
         method (str): method to use. [Voronoi, instance]
     Returns:
@@ -310,8 +310,8 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     pred_seg = Cascade() \
                 .append(remove_small_objects, min_size=5) \
                 (pred_seg)
-    vet = pred_vet
     hor = pred_hor
+    vet = pred_vet
     out_dict = {}
     edges = get_voronoi_edges(point_mask, extra_out=out_dict, l2_norm=True)
     color_map = out_dict['Voronoi_cell']
@@ -341,7 +341,7 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
         new_seg = np.zeros_like(pred_seg).astype(int)
         # new_seg_curr = np.zeros_like(pred_seg).astype(int)
         # new_seg_pred = new_seg_curr.copy()
-        labeled_pred_seg = _get_instance_output(pred_seg, pred_vet, pred_hor)
+        labeled_pred_seg = _get_instance_output(pred_seg, pred_hor, pred_vet)
         labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
         point_label = label(point_mask)
         MAX_POINT_IDX = int(point_label.max())
@@ -395,9 +395,9 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     """improve cell colormap (for distance map label)"""
 
     """ - generate distance map"""
-    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
     # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
-    # sig_diff = np.maximum(grad_vet, grad_hor)
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # sig_diff = np.maximum(grad_hor, grad_vet)
     # sig_diff = Cascade() \
     #                 .append(median_filter, size=3) \
     #                 .append(gaussian) \
@@ -406,11 +406,11 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_vet, pred
     #                 # .append(median_filter, size=3) \
     # sig_diff[~new_seg] = 0
 
-    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
     grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-    # show(grad_vet, grad_hor)
-    # sig_diff = np.maximum(grad_vet, grad_hor)
-    sig_diff = (grad_vet ** 2 + grad_hor ** 2) ** 0.5
+    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    # show(grad_hor, grad_vet)
+    # sig_diff = np.maximum(grad_hor, grad_vet)
+    sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
     sig_diff = Cascade() \
                     .append(median_filter, size=5) \
                     (sig_diff)
@@ -507,8 +507,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
     # run
     current_seg_mask = np.zeros(wholesize, dtype=bool)
     pred_seg = np.zeros(wholesize, dtype=np.float32)
-    pred_vet = np.zeros(wholesize, dtype=np.float32)
     pred_hor = np.zeros(wholesize, dtype=np.float32)
+    pred_vet = np.zeros(wholesize, dtype=np.float32)
 
     for idx, (img, gt) in enumerate(data_loader):
         gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()[..., 0]
@@ -516,21 +516,21 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
         j = (idx % step) % cols
         current_seg_mask[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = gt
 
-        seg, vet, hor = get_output_from_model(img.to(device), model, transform=DEFAULT_TRANSFORM)
+        seg, hor, vet = get_output_from_model(img.to(device), model, transform=DEFAULT_TRANSFORM)
 
         pred_seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg
-        pred_vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet
         pred_hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor
+        pred_vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet
 
         image_idx = (idx // step) + 1
         print(f'image: {image_idx}/{total_images}, patch: {idx+1}/{total_patches}', end='\r')
         if (idx + 1) % step == 0:
             current_seg_mask_ = current_seg_mask[:imagesize, :imagesize]
             pred_seg_ = pred_seg[:imagesize, :imagesize]
-            pred_vet_ = pred_vet[:imagesize, :imagesize]
             pred_hor_ = pred_hor[:imagesize, :imagesize]
+            pred_vet_ = pred_vet[:imagesize, :imagesize]
             point_mask = dataset.read_points(image_idx, split)
-            new_seg, new_cell = improve_pseudo_labels(current_seg_mask_, point_mask, pred_seg_, pred_vet_, pred_hor_)
+            new_seg, new_cell = improve_pseudo_labels(current_seg_mask_, point_mask, pred_seg_, pred_hor_, pred_vet_)
             assert new_seg.shape == (1000, 1000) and new_cell.shape == (1000, 1000), "I fucked up."
             # get voronoi edges
             edges = np.zeros_like(new_seg).astype(bool)
@@ -587,11 +587,11 @@ def _test_improve_pseudo_labels():
         point_mask = dataset.read_points(IDX, SPLIT)
         # point_mask = get_valid_view(point_mask)
 
-        seg, vet, hor = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM)
+        seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM)
 
-        new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
+        new_seg, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet)
 
-        # new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor)
+        # new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet)
 
         # show(current_seg_mask)
         # show(seg > 0.5)

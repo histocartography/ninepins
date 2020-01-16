@@ -100,8 +100,8 @@ def main(arguments):
         ori = get_original_image_from_file(IDX, root=IN_PATH)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
         point_mask = dataset.read_points(IDX, SPLIT)
-        seg, vet, hor = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
-        _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, vet, hor, method=METHOD)
+        seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
+        _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
