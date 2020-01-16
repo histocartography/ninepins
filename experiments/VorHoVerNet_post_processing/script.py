@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""
+Script for testing post-processing
+"""
+import logging
+import argparse
+import numpy as np
+import sys
+import mlflow
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output
+from histocartography.image.VorHoVerNet.metrics import score
+from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
+
+# setup logging
+# logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+log = logging.getLogger('Histocartography::PostProcessing')
+h1 = logging.StreamHandler(sys.stdout)
+log.setLevel(logging.INFO)
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+h1.setFormatter(formatter)
+log.addHandler(h1)
+
+# configure argument parser
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    '-s',
+    '--split',
+    type=str,
+    help='split of dataset to run.',
+    default='test',
+    required=False
+)
+parser.add_argument(
+    '-o',
+    '--output-path',
+    type=str,
+    help='instance output path.',
+    default='../../histocartography/image/VorHoVerNet/output',
+    required=False
+)
+parser.add_argument(
+    '-p',
+    '--prefix',
+    type=str,
+    help='prefix of files',
+    required=True
+)
+
+def main(arguments):
+    """
+    Run post-processing on the split of dataset
+    Args:
+        arguments (Namespace): parsed arguments.
+    """
+    # create aliases
+    SPLIT = arguments.split
+    OUT_PATH = arguments.output_path
+    PREFIX = arguments.prefix
+
+    dataset = CoNSeP(download=False)
+
+    metric = 'IOU'
+
+    for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
+        output_map = get_instance_output(True, IDX)
+        out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
+        np.save(out_file, output_map)
+        mlflow.log_artifact(out_file)
+        label, _ = dataset.read_labels(IDX, SPLIT)
+        s = score(output_map, label, metric)
+        mlflow.log_metric(metric, s[metric], step=(IDX-1))
+
+
+if __name__ == "__main__":
+    main(arguments=parser.parse_args())
