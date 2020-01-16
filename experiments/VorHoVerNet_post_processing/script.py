@@ -8,7 +8,7 @@ import numpy as np
 import sys
 import os
 import mlflow
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 
@@ -64,6 +64,22 @@ parser.add_argument(
     help='prefix of files',
     required=True
 )
+parser.add_argument(
+    '-g',
+    '--segmentation-threshold',
+    type=float,
+    help='threshold for segmentation prediction',
+    default=DEFAULT_H,
+    required=False
+)
+parser.add_argument(
+    '-t',
+    '--distancemap-threshold',
+    type=float,
+    help='threshold for distance map prediction',
+    default=DEFAULT_K,
+    required=False
+)
 
 def main(arguments):
     """
@@ -77,6 +93,8 @@ def main(arguments):
     IN_PATH = arguments.inference_path
     DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
+    SEG_THRESHOLD = arguments.segmentation_threshold
+    DIS_THRESHOLD = arguments.distancemap_threshold
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -85,7 +103,7 @@ def main(arguments):
     metrics = VALID_METRICS.keys()
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        output_map = get_instance_output(True, IDX, root=IN_PATH)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
         out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
         np.save(out_file, output_map)
         mlflow.log_artifact(out_file)
