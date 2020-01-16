@@ -86,7 +86,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     markers = label(markers)
     
     # show(th_seg)
-    show(markers)
+    # show(markers)
 
     """ - run watershed on distance map with markers"""
     res = watershed(sig_diff, markers=markers, mask=th_seg)
