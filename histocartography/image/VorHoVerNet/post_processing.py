@@ -528,8 +528,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
             edges[:, :-1][new_cell[:, 1:] != new_cell[:, :-1]] = True
             new_seg = new_seg & ~edges
             pseudo_masks = get_pseudo_masks(new_seg, point_mask, new_cell)
-            np.save(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1).replace('.png', '.npy'), pseudo_masks)
-            imsave(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1), (pseudo_masks[..., 0] * 255).astype(np.uint8))
+            np.save(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1), pseudo_masks)
+            imsave(dataset.get_path(image_idx, split, 'pseudo', itr=curr_iter+1).replace('.npy', '.png'), (pseudo_masks[..., 0] * 255).astype(np.uint8))
 
 def _test_instance_output():
     from skimage.io import imsave
