@@ -8,7 +8,7 @@ import numpy as np
 import sys
 import mlflow
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output
-from histocartography.image.VorHoVerNet.metrics import score
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 
 # setup logging
@@ -41,6 +41,22 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
+    '-i',
+    '--inference-path',
+    type=str,
+    help='inference file directory path.',
+    default='../../histocartography/image/VorHoVerNet/inference',
+    required=False
+)
+parser.add_argument(
+    '-d',
+    '--dataset-path',
+    type=str,
+    help='dataset path.',
+    default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+    required=False
+)
+parser.add_argument(
     '-p',
     '--prefix',
     type=str,
@@ -57,20 +73,29 @@ def main(arguments):
     # create aliases
     SPLIT = arguments.split
     OUT_PATH = arguments.output_path
+    IN_PATH = arguments.inference_path
+    DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
 
-    dataset = CoNSeP(download=False)
+    dataset = CoNSeP(download=False, root=DATASET_PATH)
 
-    metric = 'IOU'
+    metrics = VALID_METRICS.keys()
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        output_map = get_instance_output(True, IDX)
+        output_map = get_instance_output(True, IDX, root=IN_PATH)
         out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
         np.save(out_file, output_map)
         mlflow.log_artifact(out_file)
         label, _ = dataset.read_labels(IDX, SPLIT)
-        s = score(output_map, label, metric)
-        mlflow.log_metric(metric, s[metric], step=(IDX-1))
+        s = score(output_map, label, *metrics)
+        for metric in metrics:
+            value = s[metric]
+            if isinstance(value, dict):
+                for key, val in value.items():
+                    if not isinstance(val, list):
+                        mlflow.log_metric(metric + '_' + key, val, step=(IDX-1))        
+            else:
+                mlflow.log_metric(metric, value, step=(IDX-1))
 
 
 if __name__ == "__main__":
