@@ -96,6 +96,8 @@ def main(arguments):
 
     metrics = VALID_METRICS.keys()
 
+    aggregated_metrics = {}
+
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         ori = get_original_image_from_file(IDX, root=IN_PATH)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
@@ -119,9 +121,15 @@ def main(arguments):
             if isinstance(value, dict):
                 for key, val in value.items():
                     if not isinstance(val, list):
-                        mlflow.log_metric(metric + '_' + key, val, step=(IDX-1))        
+                        mlflow.log_metric(metric + '_' + key, val, step=(IDX-1))
+                        if metric_name not in aggregated_metrics:
+                            aggregated_metrics[metric_name] = []
+                        aggregated_metrics[metric_name].append(val) 
             else:
                 mlflow.log_metric(metric, value, step=(IDX-1))
+                if metric not in aggregated_metrics:
+                    aggregated_metrics[metric] = []
+                aggregated_metrics[metric].append(value)
 
 
 if __name__ == "__main__":
