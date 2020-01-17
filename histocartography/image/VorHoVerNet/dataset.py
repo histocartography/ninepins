@@ -20,8 +20,7 @@ def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
     """
     _channels = 3
     assert isinstance(pad_width, tuple), 'pad_width should be tuples in tuple'
-    if mode == 'dist':
-        assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
+    assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
 
     ori_h, ori_w = img.shape[:2]
     padded = np.pad(img, pad_width=pad_width, mode='reflect')
@@ -160,7 +159,7 @@ def data_reader(root=None, split='train', channel_first=True, itr=0, doflip=Fals
         image = data_reader.read_image(idx, split) / 255
         # load pseudo labels
         label_path = data_reader.get_path(idx, split, 'label')
-        pseudolabel_path = label_path.replace('Labels', f'PseudoLabels_{itr}')
+        pseudolabel_path = label_path.replace('Labels', f'PseudoLabels_{itr:02d}')
         pseudolabels = np.load(pseudolabel_path)
         ori_h, ori_w = pseudolabels.shape[:2]
         # load full labels (optional)

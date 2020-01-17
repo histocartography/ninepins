@@ -155,7 +155,7 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 
 if __name__ == '__main__':
     # load model
-    model_name = 'model_009_ckpt_epoch_18.ckpt'
+    model_name = 'model_009_01_ckpt_epoch_20.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
     model = Net()
@@ -164,9 +164,9 @@ if __name__ == '__main__':
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='train', doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', itr=1, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
-    inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2])
-    # inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    # inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    inference(model, test_loader, figpath_fix=model_name.split('.')[-2])

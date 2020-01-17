@@ -44,8 +44,8 @@ parser.add_argument('--early_stop_patience', type=int, default=5, metavar='N',
                     help='how many times to wait before early stop (default: 5)')
 parser.add_argument('--early_stop_monitor', type=str, default='val_loss', metavar='N', 
                     help='criterion monitor for early stopping (default: val_loss)')
-parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
-                    help='save results of inference (default: True)')
+# parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
+#                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
 #                     help='dir name of visualization images')
 
@@ -67,7 +67,7 @@ def main(args):
     LOG_INTERVAL = args.log_interval
     EARLY_STOP_PATIENCE = args.early_stop_patience
     EARLY_STOP_MONITOR = args.early_stop_monitor
-    INFERENCE_MODE = args.inference_mode
+    INFERENCE_MODE = True if NUMBER_OF_WORKERS == 1 else False
 
     # make sure data folder exists
     os.makedirs(DATA_PATH, exist_ok=True)
@@ -124,18 +124,18 @@ def main(args):
     #     tfs.RandomRotation(45, fill=1.0)
     # ])
 
-    augs_image = tfs.Compose([
-        tfs.ToPILImage(),
-        tfs.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
-    ])
+#     augs_image = tfs.Compose([
+#         tfs.ToPILImage(),
+#         tfs.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
+#     ])
 
     # prepare data_loaders
-    train_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='train', contain_both=True, part=None))
+    train_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='train', itr=1, doflip=True, contain_both=True, part=None))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
     # train_data = AugmentedDataset(dataset=train_data, transform=augs_both, target_transform=augs_both)
-    train_data = AugmentedDataset(dataset=train_data, transform=augs_image, target_transform=None)
+#     train_data = AugmentedDataset(dataset=train_data, transform=augs_image, target_transform=None)
     dataset_loaders = {
         'train': torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS), 
         'val': torch.utils.data.DataLoader(valid_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS)
@@ -143,6 +143,10 @@ def main(args):
 
     # define model and optimizer
     model = Net(batch_size=BATCH_SIZE)
+    # if restore_model == True:
+    # ckpt = torch.load('/home/contluty01/Project/IBM/VorHoVerNet/savers_pl/model_009/model_009_ckpt_epoch_18.ckpt')
+    # print(ckpt.keys())
+    # exit()
 #     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # mlflow set a tag
@@ -162,13 +166,23 @@ def main(args):
         data_loaders=dataset_loaders,
         lr=LEARNING_RATE,
         visualize=INFERENCE_MODE,
-        vdir=MODEL_NAME
+        vdir=MODEL_NAME,
+        ckpt='savers_pl/model_009_00/model_009_00_ckpt_epoch_18.ckpt'
     )
+    # print('model:', model.state_dict().keys(), '\n\n')
+    # print('plnet:', plmodel.state_dict().keys())
+    # exit()
     
     # start training
+    # from pytorch_lightning.logging import TestTubeLogger
+    # logger = TestTubeLogger(
+    #     save_dir=f'./savers_pl/{MODEL_NAME}',
+    #     version=0
+    # )
+
     from pytorch_lightning.callbacks import ModelCheckpoint
     checkpoint_callback = ModelCheckpoint(
-        filepath='./savers_pl/{}'.format(MODEL_NAME),
+        filepath=f'./savers_pl/{MODEL_NAME}',
         save_best_only=True,
         verbose=True,
         monitor=EARLY_STOP_MONITOR,
@@ -190,9 +204,12 @@ def main(args):
             print('early_stop_minitor: {}'.format(EARLY_STOP_MONITOR))
             print('early_stop_patience: {}'.format(EARLY_STOP_PATIENCE))
             print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
-            trainer = pl.Trainer(accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
-                                 max_nb_epochs=EPOCHS, min_nb_epochs=30, 
-                                 checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback)
+            trainer = pl.Trainer(
+                accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
+                default_save_path=f'./savers_pl/{MODEL_NAME}',
+                checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
+                distributed_backend='dp')
+            trainer.current_epoch = 18
         else:
             trainer = pl.Trainer(max_nb_epochs=EPOCHS, checkpoint_callback=checkpoint_callback)
         trainer.fit(plmodel)
@@ -201,12 +218,12 @@ def main(args):
 
     # save model
     SAVER_PATH = 'saver_pl/'
-    MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(plmodel.epoch)
+    MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(plmodel.current_epoch)
     os.makedirs(SAVER_PATH, exist_ok=True)
     saved_model = SAVER_PATH + MODEL_NAME
     # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
     state_dict = {
-        'epoch': plmodel.epoch,
+        'epoch': plmodel.current_epoch,
         'state_dict': plmodel.state_dict()
     }
     torch.save(state_dict, saved_model)
@@ -215,4 +232,4 @@ def main(args):
 
 if __name__ == "__main__":
     main(args=parser.parse_args())
-    # python train_pl.py -n model_005 --batch_size 8 --epochs 100 --early_stop_patience 10
+    # python train_pl.py -n model_009 --batch_size 12 --epochs 100 --early_stop_patience 10
