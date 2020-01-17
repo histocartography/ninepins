@@ -1,4 +1,4 @@
-name: VorHoVerNet_post_processing
+name: VorHoVerNet_label_improvement
 
 conda_env: conda.yml
 

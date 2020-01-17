@@ -89,7 +89,7 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     # plt.show()
     plt.close()
 
-def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
+def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80, split='test'):
     """
     Run massive inference on given model with provided data.
     Save individual result into files.
@@ -100,21 +100,22 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         gap (int): the offset between the origins of input image and output.
         psize (int): the size of input image patch. If gap is set, this is ignored.
         vsize (int): the size of output patch. If gap is set, this is ignored.
+        split (str): the split of dataset to use.
     """
     
-    os.makedirs('./inference/{}'.format(figpath_fix), exist_ok=True)
+    os.makedirs('./inference/{}/{}'.format(figpath_fix, split), exist_ok=True)
 
     subs = ["seg", "dist1", "dist2"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
-    savedir = './inference/{}/patch{:04d}'
+    savedir = './inference/{}/{}/patch{:04d}'
 
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
-        imgdir = savedir.format(figpath_fix, idx + 1)
+        imgdir = savedir.format(figpath_fix, split, idx + 1)
         os.makedirs(imgdir, exist_ok=True)
         filename = imgdir + '/{}.png'
         filename_npy = imgdir + '/{}.npy'
@@ -155,6 +156,7 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 
 if __name__ == '__main__':
     # load model
+    SPLIT = 'test'
     model_name = 'model_009_01_ckpt_epoch_20.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
@@ -164,7 +166,7 @@ if __name__ == '__main__':
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split='test', itr=1, doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split=SPLIT, itr=1, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
