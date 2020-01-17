@@ -1,4 +1,5 @@
 import numpy as np
+from skimage.morphology import label as cc
 
 def overall_IOU(output_map, label):
     """
@@ -36,12 +37,11 @@ def average_IOU(output_map, label):
     IOUs = []
     for idx in range(1, MAX_LABEL_IDX + 1):
         overlapped_indices = np.unique(output_map[label == idx])
-        if len(overlapped_indices) == 0:
-            continue
         overlapped_percentages = []
         B = (label == idx)
 
         for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
             A = (output_map == overlapped_index)
             I = A & B
             U = A | B
@@ -50,6 +50,7 @@ def average_IOU(output_map, label):
             IOU = np.count_nonzero(I) / np.count_nonzero(U)
 
             overlapped_percentages.append((perc, IOU))
+        if len(overlapped_percentages) == 0: continue
         IOUs.append(max(overlapped_percentages, key=lambda x: x[0])[1])
 
     return sum(IOUs) / len(IOUs)
@@ -93,6 +94,7 @@ def pixelwise_stats(output_map, label):
     Precision = TP / (TP + FP)
     Sensitivity = TP / (TP + FN)
     Specificity = TN / (FP + TN)
+    F1 = 2 * Precision * Sensitivity / (Precision + Sensitivity)
 
     return {
         'TP': TP,
@@ -103,7 +105,8 @@ def pixelwise_stats(output_map, label):
         'Accuracy': Accuracy,
         'Precision': Precision,
         'Sensitivity': Sensitivity,
-        'Specificity': Specificity
+        'Specificity': Specificity,
+        'F1': F1
     }
     
     return stats(TP, TN, FP, FN, ALL)
@@ -151,6 +154,7 @@ def nucleuswise_stats(output_map, label):
         matched = False
 
         for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
             A = (output_map == overlapped_index)
             I = A & B
             U = A | B
@@ -217,6 +221,7 @@ def DICE2(output_map, label):
         B = (label == idx)
 
         for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
             A = (output_map == overlapped_index)
             I = A & B
 
@@ -224,6 +229,7 @@ def DICE2(output_map, label):
             DICE = 2 * np.count_nonzero(I) / (np.count_nonzero(A) + np.count_nonzero(B))
 
             overlapped_percentages.append((perc, DICE))
+        if len(overlapped_percentages) == 0: continue
         DICEs.append(max(overlapped_percentages, key=lambda x: x[0])[1])
 
     return sum(DICEs) / len(DICEs)
@@ -264,6 +270,70 @@ def AJI(output_map, label):
         B = (label == idx)
 
         for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
+            A = (output_map == overlapped_index)
+            I = A & B
+            U = A | B
+
+            # perc = np.count_nonzero(I) / np.count_nonzero(B)
+            JI = np.count_nonzero(I) / np.count_nonzero(U)
+
+            overlapped_percentages.append((JI, np.count_nonzero(I), np.count_nonzero(U), overlapped_index))
+
+        if len(overlapped_percentages) > 0:
+            _, mI, mU, idx = max(overlapped_percentages, key=lambda x: x[0])
+            AI += mI
+            AU += mU
+            hit[idx - 1] = True
+        else:
+            AU += np.count_nonzero(B)
+
+    for i, hit_ in enumerate(hit):
+        if hit_: continue
+        AU += np.count_nonzero(output_map == (i + 1))
+
+    return AI / AU
+
+def obj_AJI(output_map, label):
+    """
+    Compute object-level Aggregated Jaccord Index of model output and label.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        obj_AJI (float)
+
+    Definition of matched objects:
+        objects exist both in model output and label, and have the maximum overlap.
+    
+    I = 0
+    U = 0
+    For each annotated nucleus (X) and corresponding matched predicted nucleus (Y):
+        I += |X intersect Y|
+        U += |X union Y|
+    For each not paired annotated nucleus (X):
+        U += |X|
+    For each not paired predicted nucleus (Y):
+        U += |Y|
+    AJI = I / U
+
+    NOTE: label needs to be cropped first to fit the valid size of the model.
+    """
+    output_map = cc(output_map > 0)
+    label = cc(label > 0)
+
+    MAX_LABEL_IDX = int(label.max())
+    AI = 0
+    AU = 0
+
+    hit = [False] * int(output_map.max())
+    for idx in range(1, MAX_LABEL_IDX + 1):
+        overlapped_indices = np.unique(output_map[label == idx])
+        overlapped_percentages = []
+        B = (label == idx)
+
+        for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
             A = (output_map == overlapped_index)
             I = A & B
             U = A | B
@@ -315,6 +385,7 @@ VALID_METRICS = {
     'nucleuswise': nucleuswise_stats,
     'DICE2': DICE2,
     'AJI': AJI,
+    'obj-AJI': obj_AJI,
     'DQ': DQ,
     'SQ': SQ,
     'PQ': PQ
