@@ -102,6 +102,8 @@ def main(arguments):
 
     metrics = VALID_METRICS.keys()
 
+    aggregated_metrics = {}
+
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
         out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
@@ -114,9 +116,19 @@ def main(arguments):
             if isinstance(value, dict):
                 for key, val in value.items():
                     if not isinstance(val, list):
-                        mlflow.log_metric(metric + '_' + key, val, step=(IDX-1))        
+                        metric_name = metric + '_' + key
+                        mlflow.log_metric(metric_name, val, step=(IDX-1))
+                        if metric_name not in aggregated_metrics:
+                            aggregated_metrics[metric_name] = []
+                        aggregated_metrics[metric_name].append(val)
             else:
                 mlflow.log_metric(metric, value, step=(IDX-1))
+                if metric not in aggregated_metrics:
+                    aggregated_metrics[metric] = []
+                aggregated_metrics[metric].append(value)
+
+    for metric, score_list in aggregated_metrics.items():
+        mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
 
 
 if __name__ == "__main__":
