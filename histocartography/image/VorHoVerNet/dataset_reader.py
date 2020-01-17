@@ -66,7 +66,7 @@ class CoNSeP_local(CoNSeP_common):
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
         else:
-            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.png"
+            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
         return path
 
     def read_image(self, idx, split):
@@ -104,10 +104,10 @@ class CoNSeP_local(CoNSeP_common):
         """
         Read pseudo segmentation label from dataset.
         Returns:
-            pseudo_label (numpy.ndarray[uint8])
+            pseudo_label (numpy.ndarray[float32])
         """
         self.check_idx(idx, split)
-        return imread(self.get_path(idx, split, "pseudo"))
+        return np.load(self.get_path(idx, split, "pseudo"))[..., 0]
 
     def __str__(self):
         """

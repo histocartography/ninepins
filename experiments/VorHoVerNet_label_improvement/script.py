@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script for testing post-processing
+Script for testing label improvement
 """
 import logging
 import argparse
@@ -8,13 +8,15 @@ import numpy as np
 import sys
 import os
 import mlflow
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K
+from skimage.io import imsave
+from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
+from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-log = logging.getLogger('Histocartography::PostProcessing')
+log = logging.getLogger('Histocartography::LabelImprovement')
 h1 = logging.StreamHandler(sys.stdout)
 log.setLevel(logging.INFO)
 formatter = logging.Formatter(
@@ -37,8 +39,8 @@ parser.add_argument(
     '-o',
     '--output-path',
     type=str,
-    help='instance output path.',
-    default='../../histocartography/image/VorHoVerNet/output',
+    help='output path.',
+    default='../../histocartography/image/VorHoVerNet/iteration',
     required=False
 )
 parser.add_argument(
@@ -65,19 +67,12 @@ parser.add_argument(
     required=True
 )
 parser.add_argument(
-    '-g',
-    '--segmentation-threshold',
-    type=float,
-    help='threshold for segmentation prediction',
-    default=DEFAULT_H,
-    required=False
-)
-parser.add_argument(
-    '-t',
-    '--distancemap-threshold',
-    type=float,
-    help='threshold for distance map prediction',
-    default=DEFAULT_K,
+    '-m',
+    '--method',
+    type=str,
+    help='method to use for generating next iteration pseudolabel',
+    default='Voronoi',
+    choices=['Voronoi', 'instance'],
     required=False
 )
 
@@ -93,8 +88,7 @@ def main(arguments):
     IN_PATH = arguments.inference_path
     DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
-    SEG_THRESHOLD = arguments.segmentation_threshold
-    DIS_THRESHOLD = arguments.distancemap_threshold
+    METHOD = arguments.method
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -103,12 +97,23 @@ def main(arguments):
     metrics = VALID_METRICS.keys()
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
-        out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
-        np.save(out_file, output_map)
-        mlflow.log_artifact(out_file)
+        ori = get_original_image_from_file(IDX, root=IN_PATH)
+        current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
+        point_mask = dataset.read_points(IDX, SPLIT)
+        seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
+        _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
+        image = draw_label_boundaries(ori, new_cell.copy())
+        out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
+        out_npy = out_file_prefix + '.npy'
+        out_img = out_file_prefix + '.png'
+        np.save(out_npy, new_cell)
+        imsave(out_img, image.astype(np.uint8))
+        mlflow.log_artifact(out_npy)
+        mlflow.log_artifact(out_img)
+        
         label, _ = dataset.read_labels(IDX, SPLIT)
-        s = score(output_map, label, *metrics)
+        
+        s = score(new_cell, label, *metrics)
         for metric in metrics:
             value = s[metric]
             if isinstance(value, dict):
