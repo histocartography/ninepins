@@ -7,6 +7,4 @@ entry_points:
     parameters:
       split: {type: string, default: test}
       prefix: string
-      sobel: {type: float, default: 1}
-      max: {type: float, default: 0}
-    command: "python3 script.py -s {split} -p {prefix} --sobel {sobel} --max {max}"
+    command: "python3 script.py -s {split} -p {prefix}"
