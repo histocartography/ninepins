@@ -9,7 +9,7 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, get_instance_output_v2, DEFAULT_H, DEFAULT_K, get_original_image_from_file
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
@@ -82,6 +82,13 @@ parser.add_argument(
     default=DEFAULT_K,
     required=False
 )
+parser.add_argument(
+    '--v2',
+    type=bool,
+    help='whether to use v2 (data-dependent threshold)',
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
@@ -97,6 +104,7 @@ def main(arguments):
     PREFIX = arguments.prefix
     SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
+    V2 = arguments.v2
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -108,7 +116,10 @@ def main(arguments):
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         ori = get_original_image_from_file(IDX, root=IN_PATH)
-        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
+        if V2:
+            output_map = get_instance_output_v2(IDX, root=IN_PATH, h=SEG_THRESHOLD)
+        else:
+            output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
