@@ -82,20 +82,6 @@ parser.add_argument(
     default=DEFAULT_K,
     required=False
 )
-parser.add_argument(
-    '--sobel',
-    type=bool,
-    help='use sobel filter instead of laplacian filter',
-    default=True,
-    required=False
-)
-parser.add_argument(
-    '--max',
-    type=bool,
-    help='use maximum instead of l2_norm',
-    default=False,
-    required=False
-)
 
 def main(arguments):
     """
@@ -111,8 +97,6 @@ def main(arguments):
     PREFIX = arguments.prefix
     SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
-    SOBEL = arguments.sobel
-    MAX = arguments.max
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -124,7 +108,7 @@ def main(arguments):
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         ori = get_original_image_from_file(IDX, root=IN_PATH)
-        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD, use_sobel=SOBEL, use_max=MAX)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'

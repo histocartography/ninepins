@@ -21,7 +21,7 @@ def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
 
 DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
 
-def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True, use_max=False):
+def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -45,17 +45,9 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True
     """combine the output maps"""
 
     """ - generate distance map"""
-    if use_sobel:
-        grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
-        grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
-    else:
-        grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-        grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
-
-    if use_max:
-        sig_diff = np.maximum(grad_hor, grad_vet)
-    else:
-        sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+    grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
+    grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
+    sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
 
     sig_diff = Cascade() \
                     .append(median_filter, size=5) \
@@ -119,7 +111,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True
 
     return res
 
-def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True, use_max=False, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -139,7 +131,7 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, use_sobel=Tr
         seg, hor, vet = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
-    return _get_instance_output(seg, hor, vet, h=h, k=k, use_sobel=use_sobel, use_max=use_max)
+    return _get_instance_output(seg, hor, vet, h=h, k=k)
 
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
@@ -561,7 +553,7 @@ def _test_instance_output():
 
     os.makedirs('output', exist_ok=True)
 
-    prefix = 'output/mlflow_swap'
+    prefix = 'output/mlflow_new_metrics'
 
     use_patch_idx = False
     # use_patch_idx = True
@@ -570,11 +562,11 @@ def _test_instance_output():
 
     # for IDX in range(1, 15):
     # for IDX in range(1, 2367):
-    observe_idx = 2
+    observe_idx = 1
     for IDX in range(observe_idx, observe_idx + 1):
         for k in np.linspace(1, 2, 21):
         # for k in [1.7]:
-            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
+            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx, use_sobel=True, use_max=True)
             # res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
             img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
 
