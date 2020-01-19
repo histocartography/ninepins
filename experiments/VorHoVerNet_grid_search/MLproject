@@ -6,5 +6,5 @@ entry_points:
   main:
     parameters:
       split: {type: string, default: test}
-      index: int
+      index: float
     command: "python3 script.py -s {split} -x {index}"
