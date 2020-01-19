@@ -9,7 +9,7 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
