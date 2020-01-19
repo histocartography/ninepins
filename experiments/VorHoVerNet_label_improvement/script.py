@@ -9,10 +9,12 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
+from skimage.morphology import label as cc, binary_dilation, disk
 from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
+from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -75,6 +77,14 @@ parser.add_argument(
     choices=['Voronoi', 'instance'],
     required=False
 )
+parser.add_argument(
+    '-n',
+    '--no-improve',
+    help='do not perform improvement. (evaluate current label)',
+    type=bool,
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
@@ -89,6 +99,7 @@ def main(arguments):
     DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
     METHOD = arguments.method
+    NO_IMPROVE = arguments.no_improve
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -102,8 +113,13 @@ def main(arguments):
         ori = get_original_image_from_file(IDX, root=IN_PATH)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
         point_mask = dataset.read_points(IDX, SPLIT)
-        seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
-        _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
+        if NO_IMPROVE:
+            edges = binary_dilation(get_voronoi_edges(point_mask) > 0, disk(1))
+            new_cell = current_seg_mask & ~edges
+            new_cell = cc(new_cell)
+        else:
+            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
+            _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
