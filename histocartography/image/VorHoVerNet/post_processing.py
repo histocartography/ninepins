@@ -12,7 +12,7 @@ from histocartography.image.VorHoVerNet.utils import *
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 DEFAULT_H = 0.5
-DEFAULT_K = 2
+DEFAULT_K = 1.75
 
 def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
     image[seg <= th] = 0
@@ -21,35 +21,47 @@ def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
 
 DEFAULT_TRANSFORM = lambda im, seg: masked_scale(im, seg)
 
-def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
+def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True, use_max=False):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
         seg (numpy.ndarray[float]): segmentation output.
         hor (numpy.ndarray[float]): horizontal distance map output.
         vet (numpy.ndarray[float]): vertical distance map output.
+        h (float): threshold for segmentation output.
+        k (float): threshold for distance map output.
     Returns:
         instance_map (numpy.ndarray[int]): instance map
     """
     """pre-process the output maps"""
     th_seg = seg > h
     th_seg = Cascade() \
-                .append(binary_opening, disk(3)) \
                 .append(remove_small_objects, min_size=5) \
                 (th_seg)
+                # .append(binary_opening, disk(3)) \
 
     # show(th_seg)
 
     """combine the output maps"""
 
     """ - generate distance map"""
-    grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
-    sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+    if use_sobel:
+        grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
+        grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
+    else:
+        grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
+        grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+
+    if use_max:
+        sig_diff = np.maximum(grad_hor, grad_vet)
+    else:
+        sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+
     sig_diff = Cascade() \
                     .append(median_filter, size=5) \
                     (sig_diff)
     # show(sig_diff * (seg > h))
+    # show(grad_hor, grad_vet)
     sig_diff[~th_seg] = 0
 
 
@@ -107,7 +119,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     return res
 
-def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, use_sobel=True, use_max=False, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -127,7 +139,7 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
         seg, hor, vet = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
-    return _get_instance_output(seg, hor, vet, h=h, k=k)
+    return _get_instance_output(seg, hor, vet, h=h, k=k, use_sobel=use_sobel, use_max=use_max)
 
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
@@ -543,6 +555,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
 
 def _test_instance_output():
     from skimage.io import imsave
+    from metrics import score
+    from dataset_reader import CoNSeP
     import os
 
     os.makedirs('output', exist_ok=True)
@@ -552,18 +566,28 @@ def _test_instance_output():
     use_patch_idx = False
     # use_patch_idx = True
 
-    for IDX in range(1, 2):
+    dataset = CoNSeP(download=False)
+
+    # for IDX in range(1, 15):
     # for IDX in range(1, 2367):
-    # observe_idx = 2
-    # for IDX in range(observe_idx, observe_idx + 1):
-        res = get_instance_output(True, IDX, k=2, use_patch_idx=use_patch_idx)
-        # res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
-        img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
-        np.save('{}_{}.npy'.format(prefix, IDX), res)
+    observe_idx = 2
+    for IDX in range(observe_idx, observe_idx + 1):
+        for k in np.linspace(1, 2, 21):
+        # for k in [1.7]:
+            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
+            # res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
+            img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
 
-        img = draw_label_boundaries(img, res)
+            label = dataset.read_labels(IDX, 'test')[0]
+            np.save('{}_{}.npy'.format(prefix, IDX), res)
 
-        imsave('{}_{}.png'.format(prefix, IDX), img)
+            img = draw_label_boundaries(img, res.copy())
+
+            imsave('{}_{}.png'.format(prefix, IDX), img)
+
+            s = score(res, label, 'AJI')
+            
+            print(k, s['AJI'])
 
         # show(img)
 

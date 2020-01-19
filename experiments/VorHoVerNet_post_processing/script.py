@@ -8,9 +8,11 @@ import numpy as np
 import sys
 import os
 import mlflow
+from skimage.io import imsave
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
+from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -80,6 +82,20 @@ parser.add_argument(
     default=DEFAULT_K,
     required=False
 )
+parser.add_argument(
+    '--sobel',
+    type=bool,
+    help='use sobel filter instead of laplacian filter',
+    default=True,
+    required=False
+)
+parser.add_argument(
+    '--max',
+    type=bool,
+    help='use maximum instead of l2_norm',
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
@@ -95,6 +111,8 @@ def main(arguments):
     PREFIX = arguments.prefix
     SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
+    SOBEL = arguments.sobel
+    MAX = arguments.max
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -105,10 +123,17 @@ def main(arguments):
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
-        out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.npy'
-        np.save(out_file, output_map)
-        mlflow.log_artifact(out_file)
+        ori = get_original_image_from_file(IDX, root=IN_PATH)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=DIS_THRESHOLD, use_sobel=SOBEL, use_max=MAX)
+        out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
+        out_npy = out_file_prefix + '.npy'
+        out_img = out_file_prefix + '.png'
+        np.save(out_npy, output_map)
+        image = draw_label_boundaries(ori, output_map.copy())
+        imsave(out_img, image.astype(np.uint8))
+        mlflow.log_artifact(out_npy)
+        mlflow.log_artifact(out_img)
+
         label, _ = dataset.read_labels(IDX, SPLIT)
         s = score(output_map, label, *metrics)
         for metric in metrics:
