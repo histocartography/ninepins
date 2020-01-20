@@ -50,7 +50,10 @@ class Cascade:
 
 def broadcastable(func):
     def func_(*args, **kwargs):
-        return [func(arg, **kwargs) for arg in args]
+        if len(args) > 1:
+            return [func(arg, **kwargs) for arg in args]
+        else:
+            return func(*args, **kwargs)
     return func_
 
 def image_to_save(im):
