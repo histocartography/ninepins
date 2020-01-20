@@ -439,8 +439,9 @@ def run(prefix, metrics):
         s = score(output_map, label, metrics)
         print(s[metrics])
 
-def mark_nuclei(image_, output_map, label):
-    stats = nucleuswise_stats(output_map, label)
+def mark_nuclei(image_, output_map, label, stats=None):
+    if stats is None:
+        stats = nucleuswise_stats(output_map, label)
     TP_list = stats['TP_list']
     TP_pred_list = stats['TP_pred_list']
     FP_list = stats['FP_list']
