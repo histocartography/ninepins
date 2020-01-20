@@ -11,7 +11,7 @@ import mlflow
 from skimage.io import imsave
 from skimage.morphology import label as cc, binary_dilation, disk
 from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
@@ -124,14 +124,21 @@ def main(arguments):
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
+        out_b_img = out_file_prefix + '_both.png'
+        out_p_img = out_file_prefix + '_pred.png'
+        out_l_img = out_file_prefix + '_label.png'
         np.save(out_npy, new_cell)
         imsave(out_img, image.astype(np.uint8))
         mlflow.log_artifact(out_npy)
         mlflow.log_artifact(out_img)
         
-        label, _ = dataset.read_labels(IDX, SPLIT)
-        
+        label, _ = dataset.read_labels(IDX, SPLIT)        
         s = score(new_cell, label, *metrics)
+
+        for img, p in zip(mark_nuclei(ori, new_cell, label, s['nucleuswise']), [out_b_img, out_p_img, out_l_img]):
+            imsave(p, img)
+            mlflow.log_artifact(p)
+
         for metric in metrics:
             value = s[metric]
             if isinstance(value, dict):
