@@ -110,7 +110,7 @@ def main(arguments):
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH)
+        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
         point_mask = dataset.read_points(IDX, SPLIT)
         if NO_IMPROVE:
@@ -118,7 +118,7 @@ def main(arguments):
             new_cell = current_seg_mask & ~edges
             new_cell = cc(new_cell)
         else:
-            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
+            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT)
             _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'

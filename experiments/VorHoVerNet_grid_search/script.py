@@ -102,7 +102,7 @@ def main(arguments):
     for step, k in enumerate(np.linspace(st, ed, num)):
         thresholds.append(k)
         mlflow.log_metric('threshold', k, step=step)
-        output_map = get_instance_output(True, IDX, root=IN_PATH, h=SEG_THRESHOLD, k=k)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=k)
         label, _ = dataset.read_labels(IDX, SPLIT)
         s = score(output_map, label, *metrics)
         for metric in metrics:
