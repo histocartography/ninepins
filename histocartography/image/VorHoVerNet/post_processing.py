@@ -42,6 +42,17 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     # show(th_seg)
 
+    hor_zero = (hor.max() + hor.min()) / 2
+    vet_zero = (vet.max() + vet.min()) / 2
+
+    d_hor = np.abs(hor - hor_zero)
+    d_vet = np.abs(vet - vet_zero)
+
+    # print(hor_zero, vet_zero)
+    # show((d_hor < 0.05) & (d_vet < 0.05))
+
+    m = (d_hor < 0.1) & (d_vet < 0.1)
+
     """combine the output maps"""
 
     """ - generate distance map"""
@@ -56,6 +67,9 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     # show(grad_hor, grad_vet)
     sig_diff[~th_seg] = 0
 
+    # sig_diff_ = sig_diff.copy()
+    # sig_diff_[m & th_seg & (sig_diff < 1.75)] = 100
+    # show(sig_diff_, save_name='why.png')
 
     # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
     # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
@@ -67,26 +81,25 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     #                 # .append(gaussian) \
     # sig_diff[~th_seg] = 0
 
-    # show(hor)
-    # show(vet)
-    # show(sig_diff)
+    # show(hor, save_name='tellme.png')
+    # show(vet, save_name='please.png')
+    # show(sig_diff, save_name='myfriend.png')
 
     """ - generate markers"""
-    if k == 'adapt':
-        k = sig_diff.mean()
-    markers = th_seg & (sig_diff <= k)
+    markers = m & th_seg & (sig_diff <= k)
     # intermediate_prefix='markers/m'
-    markers = Cascade() \
-                    .append(binary_opening, disk(1)) \
-                    .append(remove_small_objects, min_size=10) \
-                    (markers)
-
     # markers = Cascade() \
-    #                 .append(binary_dilation, disk(3)) \
-    #                 .append(binary_fill_holes) \
-    #                 .append(binary_erosion, disk(3)) \
-    #                 .append(remove_small_objects, min_size=5) \
+    #                 .append(binary_opening, disk(1)) \
+    #                 .append(remove_small_objects, min_size=10) \
     #                 (markers)
+
+    markers = Cascade() \
+                    .append(binary_dilation, disk(3)) \
+                    .append(binary_fill_holes) \
+                    .append(binary_erosion, disk(3)) \
+                    (markers)
+                    # .append(remove_small_objects, min_size=5) \
+
     markers = label(markers)
     
     # show(th_seg)
@@ -748,7 +761,7 @@ def _test_instance_output():
     for IDX in range(observe_idx, observe_idx + 1):
         for k in np.linspace(1, 2, 21):
         # for k in [1.7]:
-            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx, use_sobel=True, use_max=True)
+            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
             img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
 
             label = dataset.read_labels(IDX, 'test')[0]
