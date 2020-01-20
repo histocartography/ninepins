@@ -89,6 +89,14 @@ parser.add_argument(
     default=False,
     required=False
 )
+parser.add_argument(
+    '-c',
+    '--ckpt-filename',
+    type=str,
+    help='filename of the checkpoint.',
+    default='model_009_ckpt_epoch_18',
+    required=False
+)
 
 def main(arguments):
     """
@@ -105,6 +113,7 @@ def main(arguments):
     SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
     V2 = arguments.v2
+    CKPT = arguments.ckpt_filename
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -115,11 +124,11 @@ def main(arguments):
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT)
+        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
         if V2:
-            output_map = get_instance_output_v2(IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD)
+            output_map = get_instance_output_v2(IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, ckpt=CKPT)
         else:
-            output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=DIS_THRESHOLD)
+            output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=DIS_THRESHOLD, ckpt=CKPT)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
