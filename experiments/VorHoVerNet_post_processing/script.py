@@ -10,7 +10,7 @@ import os
 import mlflow
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, get_instance_output_v2, DEFAULT_H, DEFAULT_K, get_original_image_from_file
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 
@@ -132,6 +132,9 @@ def main(arguments):
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
+        out_b_img = out_file_prefix + '_both.png'
+        out_p_img = out_file_prefix + '_pred.png'
+        out_l_img = out_file_prefix + '_label.png'
         np.save(out_npy, output_map)
         image = draw_label_boundaries(ori, output_map.copy())
         imsave(out_img, image.astype(np.uint8))
@@ -140,6 +143,11 @@ def main(arguments):
 
         label, _ = dataset.read_labels(IDX, SPLIT)
         s = score(output_map, label, *metrics)
+
+        for img, p in zip(mark_nuclei(ori, output_map, label, s['nucleuswise']), [out_b_img, out_p_img, out_l_img]):
+            imsave(p, img)
+            mlflow.log_artifact(p)
+
         for metric in metrics:
             value = s[metric]
             if isinstance(value, dict):

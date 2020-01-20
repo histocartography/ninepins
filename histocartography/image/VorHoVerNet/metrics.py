@@ -456,26 +456,25 @@ def mark_nuclei(image_, output_map, label, stats=None):
     FN_boundaries = get_label_boundaries(FN_nuclei, d=0) > 0
 
     # both
-    image = image_.copy()
-    image = image.astype(float)
-    image[TP_pred_boundaries | FP_boundaries | FN_boundaries] = 0
-    image[TP_pred_boundaries] += [0, 255, 0]
-    image[FP_boundaries] += [255, 0, 0]
-    image[FN_boundaries] += [0, 0, 255]
-    image = image.astype(np.uint8)
-    show(image)
+    b_image = image_.copy()
+    b_image = b_image.astype(float)
+    b_image[TP_pred_boundaries | FP_boundaries | FN_boundaries] = 0
+    b_image[TP_pred_boundaries] += [0, 255, 0]
+    b_image[FP_boundaries] += [255, 0, 0]
+    b_image[FN_boundaries] += [0, 0, 255]
+    b_image = b_image.astype(np.uint8)
 
     # prediction
-    image = image_.copy()
-    image[TP_pred_boundaries] = [0, 255, 0]
-    image[FP_boundaries] = [255, 0, 0]
-    show(image)
+    p_image = image_.copy()
+    p_image[TP_pred_boundaries] = [0, 255, 0]
+    p_image[FP_boundaries] = [255, 0, 0]
 
     # label
-    image = image_.copy()
-    image[TP_boundaries] = [0, 255, 0]
-    image[FN_boundaries] = [255, 0, 0]
-    show(image)
+    l_image = image_.copy()
+    l_image[TP_boundaries] = [0, 255, 0]
+    l_image[FN_boundaries] = [255, 0, 0]
+
+    return b_image, p_image, l_image
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
