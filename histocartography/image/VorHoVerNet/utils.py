@@ -264,3 +264,4 @@ def show(img):
     """
     plt.imshow(img)
     plt.show()
+    return plt
