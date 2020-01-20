@@ -259,12 +259,14 @@ def shift_and_scale(img, vmax, vmin):
     return img
 
 @broadcastable
-def show(img):
+def show(img, save_name=None, figure_settings={}, save_settings={}):
     """
     Plot an image.
     Args:
         img (numpy.ndarray[any]): the image.
     """
+    plt.figure(**figure_settings)
     plt.imshow(img)
+    if save_name is not None:
+        plt.savefig(save_name, **save_settings)
     plt.show()
-    return plt
