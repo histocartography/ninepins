@@ -88,7 +88,7 @@ def main(arguments):
     RANGE = arguments.range
 
     try:
-        st, ed, num = map(int, RANGE.split(':'))
+        st, ed, num = map(float, RANGE.split(':'))
     except:
         log.error('Invalid range')
 
