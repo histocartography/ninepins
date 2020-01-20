@@ -1,5 +1,6 @@
 import numpy as np
 from skimage.morphology import label as cc
+from histocartography.image.VorHoVerNet.utils import get_label_boundaries, show
 
 def overall_IOU(output_map, label):
     """
@@ -143,6 +144,7 @@ def nucleuswise_stats(output_map, label):
     TP = 0
     hit = [False] * int(output_map.max())
     FN_list = []
+    TP_list = []
     sum_IOU = 0
 
     for idx in range(1, MAX_LABEL_IDX + 1):
@@ -168,10 +170,18 @@ def nucleuswise_stats(output_map, label):
                 sum_IOU += IOU
                 break
 
-        if not matched:
+        if matched:
+            TP_list.append(idx)
+        else:
             FN_list.append(idx)
 
-    FP_list = [(i+1) for i, hit_ in enumerate(hit) if not hit_]
+    FP_list = []
+    TP_pred_list = []
+    for i, hit_ in enumerate(hit):
+        if hit_:
+            TP_pred_list.append(i+1)
+        else:
+            FP_list.append(i+1)
 
     TP_pred = np.count_nonzero(hit)
 
@@ -186,6 +196,8 @@ def nucleuswise_stats(output_map, label):
         'TP_pred': TP_pred,
         'FP': FP,
         'FN': FN,
+        'TP_list': TP_list,
+        'TP_pred_list': TP_pred_list,
         'FP_list': FP_list,
         'FN_list': FN_list,
         'sum_IOU': sum_IOU,
@@ -427,12 +439,47 @@ def run(prefix, metrics):
         s = score(output_map, label, metrics)
         print(s[metrics])
 
+def mark_nuclei(image_, output_map, label):
+    stats = nucleuswise_stats(output_map, label)
+    TP_list = stats['TP_list']
+    TP_pred_list = stats['TP_pred_list']
+    FP_list = stats['FP_list']
+    FN_list = stats['FN_list']
+    TP_pred_nuclei = output_map * np.isin(output_map, TP_pred_list)
+    FP_nuclei = output_map * np.isin(output_map, FP_list)
+    TP_nuclei = label * np.isin(label, TP_list)
+    FN_nuclei = label * np.isin(label, FN_list)
+    TP_boundaries = get_label_boundaries(TP_nuclei, d=0) > 0
+    TP_pred_boundaries = get_label_boundaries(TP_pred_nuclei, d=0) > 0
+    FP_boundaries = get_label_boundaries(FP_nuclei, d=0) > 0
+    FN_boundaries = get_label_boundaries(FN_nuclei, d=0) > 0
+
+    # both
+    image = image_.copy()
+    image = image.astype(float)
+    image[TP_pred_boundaries | FP_boundaries | FN_boundaries] = 0
+    image[TP_pred_boundaries] += [0, 255, 0]
+    image[FP_boundaries] += [255, 0, 0]
+    image[FN_boundaries] += [0, 0, 255]
+    image = image.astype(np.uint8)
+    show(image)
+
+    # prediction
+    image = image_.copy()
+    image[TP_pred_boundaries] = [0, 255, 0]
+    image[FP_boundaries] = [255, 0, 0]
+    show(image)
+
+    # label
+    image = image_.copy()
+    image[TP_boundaries] = [0, 255, 0]
+    image[FN_boundaries] = [255, 0, 0]
+    show(image)
+
 if __name__ == "__main__":
-    from pathlib import Path
-    # from utils import show, get_valid_view
     from dataset_reader import CoNSeP
-    # IDX = 3
-    # prefix = 'out'
+    IDX = 1
+    prefix = 'mlflow_new_metrics'
     # prefix = 'curr_cell_new'
     # prefix = 'new_cell_new_l2'
     # prefix = 'new_cell_new_instance'
@@ -441,10 +488,16 @@ if __name__ == "__main__":
     # m = 'DICE2'
 
     # for metrics in ['DICE2', 'avgIOU', 'IOU', 'AJI']:
-    for metrics in ['DQ', 'SQ', 'PQ']:
-        print(metrics + "{")
-        # for prefix in ['curr_cell_new', 'new_cell_new_l2', 'new_cell_new_instance']:
-        for prefix in ['temp']:
-            print(prefix + ":")
-            run(prefix, metrics)
-        print("}" + metrics)
+    # for metrics in ['DQ', 'SQ', 'PQ']:
+    #     print(metrics + "{")
+    #     # for prefix in ['curr_cell_new', 'new_cell_new_l2', 'new_cell_new_instance']:
+    #     for prefix in ['temp']:
+    #         print(prefix + ":")
+    #         run(prefix, metrics)
+    #     print("}" + metrics)
+
+    image = dataset.read_image(IDX, 'test')
+    output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+    label, _ = dataset.read_labels(IDX, 'test')
+
+    mark_nuclei(image, output_map, label)
