@@ -65,7 +65,7 @@ def image_to_save(im):
     else:
         return im.astype("uint8")
 
-def get_point_from_instance(inst, ignore_size=10, binary=False):
+def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="centroid"):
     """
     Args:
         inst (numpy.ndarray[int]): instance map of nuclei. (integers larger than 0 indicates the nuclear instance)
@@ -83,9 +83,9 @@ def get_point_from_instance(inst, ignore_size=10, binary=False):
         if coords.shape[0] <= ignore_size:
             continue
         if binary:
-            point_map[get_center(coords)] = True
+            point_map[get_center(coords, mode=center_mode)] = True
         else:
-            point_map[get_center(coords)] = inst_idx
+            point_map[get_center(coords, mode=center_mode)] = inst_idx
     return point_map
 
 def booleanize_point_labels(pt_lbls):
@@ -115,7 +115,7 @@ def get_center(coords, mode="extrema"):
             M, m = np.max(coords_d), np.min(coords_d)
             center.append(int((M + m) / 2))
         return tuple(center)
-    elif mode == "mass":
+    elif mode == "centroid":
         return coords.sum(axis=0) / coords.shape[0]
     else:
         raise ValueError("Unknown mode")
