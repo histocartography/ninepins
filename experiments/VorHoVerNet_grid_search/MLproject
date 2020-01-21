@@ -1,0 +1,10 @@
+name: VorHoVerNet_grid_search
+
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      split: {type: string, default: test}
+      index: float
+    command: "python3 script.py -s {split} -x {index}"

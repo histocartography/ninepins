@@ -12,7 +12,7 @@ from histocartography.image.VorHoVerNet.utils import *
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 DEFAULT_H = 0.5
-DEFAULT_K = 2
+DEFAULT_K = 1.75
 
 def masked_scale(image, seg, th=0.5, vmax=1, vmin=-1):
     image[seg <= th] = 0
@@ -28,30 +28,48 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
         seg (numpy.ndarray[float]): segmentation output.
         hor (numpy.ndarray[float]): horizontal distance map output.
         vet (numpy.ndarray[float]): vertical distance map output.
+        h (float): threshold for segmentation output.
+        k (float): threshold for distance map output.
     Returns:
         instance_map (numpy.ndarray[int]): instance map
     """
     """pre-process the output maps"""
     th_seg = seg > h
     th_seg = Cascade() \
-                .append(binary_opening, disk(3)) \
                 .append(remove_small_objects, min_size=5) \
                 (th_seg)
+                # .append(binary_opening, disk(3)) \
 
     # show(th_seg)
+
+    hor_zero = (hor.max() + hor.min()) / 2
+    vet_zero = (vet.max() + vet.min()) / 2
+
+    d_hor = np.abs(hor - hor_zero)
+    d_vet = np.abs(vet - vet_zero)
+
+    # print(hor_zero, vet_zero)
+    # show((d_hor < 0.05) & (d_vet < 0.05))
+
+    m = (d_hor < 0.1) & (d_vet < 0.1)
 
     """combine the output maps"""
 
     """ - generate distance map"""
-    grad_hor = np.exp(shift_and_scale(np.abs(np.gradient(hor)[1]), 1, 0) * 5)
-    grad_vet = np.exp(shift_and_scale(np.abs(np.gradient(vet)[0]), 1, 0) * 5)
+    grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
+    grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
     sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+
     sig_diff = Cascade() \
                     .append(median_filter, size=5) \
                     (sig_diff)
     # show(sig_diff * (seg > h))
+    # show(grad_hor, grad_vet)
     sig_diff[~th_seg] = 0
 
+    # sig_diff_ = sig_diff.copy()
+    # sig_diff_[m & th_seg & (sig_diff < 1.75)] = 100
+    # show(sig_diff_, save_name='why.png')
 
     # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
     # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
@@ -63,26 +81,25 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
     #                 # .append(gaussian) \
     # sig_diff[~th_seg] = 0
 
-    # show(hor)
-    # show(vet)
-    # show(sig_diff)
+    # show(hor, save_name='tellme.png')
+    # show(vet, save_name='please.png')
+    # show(sig_diff, save_name='myfriend.png')
 
     """ - generate markers"""
-    if k == 'adapt':
-        k = sig_diff.mean()
-    markers = th_seg & (sig_diff <= k)
+    markers = m & th_seg & (sig_diff <= k)
     # intermediate_prefix='markers/m'
-    markers = Cascade() \
-                    .append(binary_opening, disk(1)) \
-                    .append(remove_small_objects, min_size=10) \
-                    (markers)
-
     # markers = Cascade() \
-    #                 .append(binary_dilation, disk(3)) \
-    #                 .append(binary_fill_holes) \
-    #                 .append(binary_erosion, disk(3)) \
-    #                 .append(remove_small_objects, min_size=5) \
+    #                 .append(binary_opening, disk(1)) \
+    #                 .append(remove_small_objects, min_size=10) \
     #                 (markers)
+
+    markers = Cascade() \
+                    .append(binary_dilation, disk(3)) \
+                    .append(binary_fill_holes) \
+                    .append(binary_erosion, disk(3)) \
+                    (markers)
+                    # .append(remove_small_objects, min_size=5) \
+
     markers = label(markers)
     
     # show(th_seg)
@@ -128,6 +145,188 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
     return _get_instance_output(seg, hor, vet, h=h, k=k)
+
+def get_instance_output_v2(*args, h=DEFAULT_H, **kwargs):
+    th_seg, sig_diff, markers = get_output_from_file_v2(*args, th=h, **kwargs)
+    # markers = label(markers)
+    markers = th_seg & markers
+    # th_seg = seg > h
+    th_seg = Cascade() \
+                .append(remove_small_objects, min_size=5) \
+                (th_seg)
+                # .append(binary_opening, disk(3)) \
+
+    # show(th_seg)
+
+    """combine the output maps"""
+
+    """ - generate distance map"""
+    # grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
+    # grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
+    # sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+
+    sig_diff = Cascade() \
+                    .append(median_filter, size=5) \
+                    (sig_diff)
+    # show(sig_diff * (seg > h))
+    # show(grad_hor, grad_vet)
+    sig_diff[~th_seg] = 0
+
+
+    # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # sig_diff = np.maximum(grad_hor, grad_vet)
+    # sig_diff = Cascade() \
+    #                 .append(maximum_filter, size=3) \
+    #                 .append(median_filter, size=3) \
+    #                 (sig_diff)
+    #                 # .append(gaussian) \
+    # sig_diff[~th_seg] = 0
+
+    # show(hor)
+    # show(vet)
+    # show(sig_diff)
+
+    """ - generate markers"""
+    # if k == 'adapt':
+    #     k = sig_diff.mean()
+    # markers = th_seg & (sig_diff <= k)
+    # # intermediate_prefix='markers/m'
+    markers = Cascade() \
+                    .append(binary_opening, disk(1)) \
+                    .append(remove_small_objects, min_size=10) \
+                    (markers)
+
+    # markers = Cascade() \
+    #                 .append(binary_dilation, disk(3)) \
+    #                 .append(binary_fill_holes) \
+    #                 .append(binary_erosion, disk(3)) \
+    #                 .append(remove_small_objects, min_size=5) \
+    #                 (markers)
+    # show(markers)
+    markers = label(markers)
+    
+    # show(th_seg)
+    # show(markers)
+
+    """ - run watershed on distance map with markers"""
+    res = watershed(sig_diff, markers=markers, mask=th_seg)
+
+    """ - re-fill regions in thresholded nuclei map which do not have markers"""
+    not_in_watershed = th_seg & (res == 0)
+    lbl_th_seg = label(not_in_watershed)
+    offset = int(res.max())
+    lbl_th_seg += offset
+    lbl_th_seg[lbl_th_seg == offset] = 0
+    
+    # res = np.where((res == 0) & (lbl_th_seg != 0), lbl_th_seg, res)
+    res += lbl_th_seg
+
+    """debug"""
+
+    return res
+
+def get_output_from_file_v2(idx,
+                        th=DEFAULT_H, use_patch_idx=False,
+                        root='./inference', ckpt='model_009_ckpt_epoch_18',
+                        split='test', prefix='patch',
+                        patchsize=270, validsize=80, inputsize=1230, imagesize=1000):
+    """
+    Read output from file.
+    Args:
+        idx (int): index of image in dataset.
+        transform (callable{
+            [numpy.ndarray(float), numpy.ndarray(float)]
+            => numpy.ndarray(float)
+        } / None):
+            the transformation function to apply on distance maps after reading.
+            Nothing would be done if set to None.
+        use_patch_idx (bool): treat the index as patch index instead.
+        root (str): root directory of the output files.
+        ckpt (str): name of the checkpoint used to generate the output.
+        prefix (str): prefix of the file names.
+        split (str): split of dataset to use. 
+        patchsize (int): size of the input patch of model.
+        validsize (int): size of the output patch of model.
+        inputsize (int): size of the padded whole image.
+        imagesize (int): size of the whole image in dataset.
+    Returns:
+        (tuple):
+            seg (numpy.ndarray[float]): segmentation output.
+            hor (numpy.ndarray[float]): horizontal distance map output.
+            vet (numpy.ndarray[float]): vertical distance map output.
+    """
+    if isinstance(root, str):
+        root = Path(root)
+    assert isinstance(root, Path), "{} is not a Path object or string".format(root)
+
+    if use_patch_idx:
+        from_dir = root / ckpt / split / "{}{:04d}".format(prefix, idx)
+        seg = np.load(str(from_dir / "seg.npy"))
+        hor = np.load(str(from_dir / "dist1.npy"))
+        vet = np.load(str(from_dir / "dist2.npy"))
+        # if transform is not None:
+        #     hor = transform(hor, seg)
+        #     vet = transform(vet, seg)
+        grad_hor = np.exp(np.abs(sobel_h(hor)))
+        grad_vet = np.exp(np.abs(sobel_v(vet)))
+        sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+        k = sig_diff[seg <= th].mean()
+        # sig_diff = Cascade() \
+        #                 .append(median_filter, size=5) \
+        #                 (sig_diff)
+        # show(sig_diff * (seg > h))
+        # show(grad_hor, grad_vet)
+        # sig_diff[~th_seg] = 0
+        return seg > th, sig_diff, sig_diff < k
+        # return seg, hor, vet
+    else:
+        if isinstance(inputsize, int):
+            inputsize = (inputsize, inputsize)
+        if isinstance(imagesize, int):
+            imagesize = (imagesize, imagesize)
+        h, w = inputsize[:2]
+
+        rows = int((h - patchsize) / validsize + 1)
+        cols = int((w - patchsize) / validsize + 1)
+        base = (idx - 1) * rows * cols
+
+        wholesize = (validsize * rows, validsize * cols)
+
+        seg = np.zeros(wholesize, dtype=bool)
+        # hor = np.zeros(wholesize, dtype=float)
+        # vet = np.zeros(wholesize, dtype=float)
+        sig_diff = np.zeros(wholesize, dtype=float)
+        markers = np.zeros(wholesize, dtype=bool)
+
+        for i in range(rows):
+            for j in range(cols):
+                index = base + i * cols + j + 1
+                from_dir = root / ckpt / split / "{}{:04d}".format(prefix, index)
+                seg_ = np.load(str(from_dir / "seg.npy"))
+                hor_ = np.load(str(from_dir / "dist1.npy"))
+                vet_ = np.load(str(from_dir / "dist2.npy"))
+
+                grad_hor = np.exp(np.abs(sobel_h(hor_)))
+                grad_vet = np.exp(np.abs(sobel_v(vet_)))
+                sig_diff_ = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+                k = sig_diff_[seg_ <= th].mean()
+
+                # if transform is not None:
+                #     hor_ = transform(hor_, seg_)
+                #     vet_ = transform(vet_, seg_)
+                
+                # seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg_
+                # hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor_
+                # vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet_
+                seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg_ > th
+                sig_diff[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = sig_diff_
+                markers[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = sig_diff_ < k
+
+        ih, iw = imagesize
+
+        # return seg[:ih, :iw, ...], hor[:ih, :iw, ...], vet[:ih, :iw, ...]
+        return seg[:ih, :iw, ...], sig_diff[:ih, :iw, ...], markers[:ih, :iw, ...]
 
 def get_output_from_file(idx,
                         transform=None, use_patch_idx=False,
@@ -543,27 +742,38 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
 
 def _test_instance_output():
     from skimage.io import imsave
+    from metrics import score
+    from dataset_reader import CoNSeP
     import os
 
     os.makedirs('output', exist_ok=True)
 
-    prefix = 'output/mlflow_swap'
+    prefix = 'output/mlflow_new_metrics'
 
     use_patch_idx = False
     # use_patch_idx = True
 
-    for IDX in range(1, 2):
+    dataset = CoNSeP(download=False)
+
+    # for IDX in range(1, 15):
     # for IDX in range(1, 2367):
-    # observe_idx = 2
-    # for IDX in range(observe_idx, observe_idx + 1):
-        res = get_instance_output(True, IDX, k=2, use_patch_idx=use_patch_idx)
-        # res = get_instance_output(True, IDX, use_patch_idx=use_patch_idx)
-        img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
-        np.save('{}_{}.npy'.format(prefix, IDX), res)
+    observe_idx = 1
+    for IDX in range(observe_idx, observe_idx + 1):
+        for k in np.linspace(1, 2, 21):
+        # for k in [1.7]:
+            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
+            img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
 
-        img = draw_label_boundaries(img, res)
+            label = dataset.read_labels(IDX, 'test')[0]
+            np.save('{}_{}.npy'.format(prefix, IDX), res)
 
-        imsave('{}_{}.png'.format(prefix, IDX), img)
+            img = draw_label_boundaries(img, res.copy())
+
+            imsave('{}_{}.png'.format(prefix, IDX), img)
+
+            s = score(res, label, 'AJI')
+            
+            print(k, s['AJI'])
 
         # show(img)
 

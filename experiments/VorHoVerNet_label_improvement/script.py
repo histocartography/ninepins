@@ -9,10 +9,12 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
+from skimage.morphology import label as cc, binary_dilation, disk
 from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
+from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -75,6 +77,14 @@ parser.add_argument(
     choices=['Voronoi', 'instance'],
     required=False
 )
+parser.add_argument(
+    '-n',
+    '--no-improve',
+    help='do not perform improvement. (evaluate current label)',
+    type=bool,
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
@@ -89,6 +99,7 @@ def main(arguments):
     DATASET_PATH = arguments.dataset_path
     PREFIX = arguments.prefix
     METHOD = arguments.method
+    NO_IMPROVE = arguments.no_improve
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -96,33 +107,56 @@ def main(arguments):
 
     metrics = VALID_METRICS.keys()
 
+    aggregated_metrics = {}
+
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH)
+        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
         point_mask = dataset.read_points(IDX, SPLIT)
-        seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH)
-        _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
+        if NO_IMPROVE:
+            edges = binary_dilation(get_voronoi_edges(point_mask) > 0, disk(1))
+            new_cell = current_seg_mask & ~edges
+            new_cell = cc(new_cell)
+        else:
+            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT)
+            _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
+        out_b_img = out_file_prefix + '_both.png'
+        out_p_img = out_file_prefix + '_pred.png'
+        out_l_img = out_file_prefix + '_label.png'
         np.save(out_npy, new_cell)
         imsave(out_img, image.astype(np.uint8))
         mlflow.log_artifact(out_npy)
         mlflow.log_artifact(out_img)
         
-        label, _ = dataset.read_labels(IDX, SPLIT)
-        
+        label, _ = dataset.read_labels(IDX, SPLIT)        
         s = score(new_cell, label, *metrics)
+
+        for img, p in zip(mark_nuclei(ori, new_cell, label, s['nucleuswise']), [out_b_img, out_p_img, out_l_img]):
+            imsave(p, img)
+            mlflow.log_artifact(p)
+
         for metric in metrics:
             value = s[metric]
             if isinstance(value, dict):
                 for key, val in value.items():
                     if not isinstance(val, list):
-                        mlflow.log_metric(metric + '_' + key, val, step=(IDX-1))        
+                        metric_name = metric + '_' + key
+                        mlflow.log_metric(metric_name, val, step=(IDX-1))
+                        if metric_name not in aggregated_metrics:
+                            aggregated_metrics[metric_name] = []
+                        aggregated_metrics[metric_name].append(val) 
             else:
                 mlflow.log_metric(metric, value, step=(IDX-1))
+                if metric not in aggregated_metrics:
+                    aggregated_metrics[metric] = []
+                aggregated_metrics[metric].append(value)
 
+    for metric, score_list in aggregated_metrics.items():
+        mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
 
 if __name__ == "__main__":
     main(arguments=parser.parse_args())

@@ -8,15 +8,13 @@ import numpy as np
 import sys
 import os
 import mlflow
-from skimage.io import imsave
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, get_instance_output_v2, DEFAULT_H, DEFAULT_K, get_original_image_from_file
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
-from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-log = logging.getLogger('Histocartography::PostProcessing')
+log = logging.getLogger('Histocartography::GridSearch')
 h1 = logging.StreamHandler(sys.stdout)
 log.setLevel(logging.INFO)
 formatter = logging.Formatter(
@@ -36,12 +34,11 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '-o',
-    '--output-path',
-    type=str,
-    help='instance output path.',
-    default='../../histocartography/image/VorHoVerNet/output',
-    required=False
+    '-x',
+    '--index',
+    type=int,
+    help='index of image.',
+    required=True
 )
 parser.add_argument(
     '-i',
@@ -60,13 +57,6 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '-p',
-    '--prefix',
-    type=str,
-    help='prefix of files',
-    required=True
-)
-parser.add_argument(
     '-g',
     '--segmentation-threshold',
     type=float,
@@ -75,26 +65,11 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '-t',
-    '--distancemap-threshold',
-    type=float,
-    help='threshold for distance map prediction',
-    default=DEFAULT_K,
-    required=False
-)
-parser.add_argument(
-    '--v2',
-    type=bool,
-    help='whether to use v2 (data-dependent threshold)',
-    default=False,
-    required=False
-)
-parser.add_argument(
-    '-c',
-    '--ckpt-filename',
+    '-r',
+    '--range',
     type=str,
-    help='filename of the checkpoint.',
-    default='model_009_ckpt_epoch_18',
+    help=r'range for grid search. {st:ed:num}',
+    default='1:2:21',
     required=False
 )
 
@@ -106,68 +81,50 @@ def main(arguments):
     """
     # create aliases
     SPLIT = arguments.split
-    OUT_PATH = arguments.output_path
     IN_PATH = arguments.inference_path
     DATASET_PATH = arguments.dataset_path
-    PREFIX = arguments.prefix
     SEG_THRESHOLD = arguments.segmentation_threshold
-    DIS_THRESHOLD = arguments.distancemap_threshold
-    V2 = arguments.v2
-    CKPT = arguments.ckpt_filename
+    IDX = arguments.index
+    RANGE = arguments.range
 
-    os.makedirs(OUT_PATH, exist_ok=True)
+    try:
+        st, ed, num = map(float, RANGE.split(':'))
+    except:
+        log.error('Invalid range')
 
     dataset = CoNSeP(download=False, root=DATASET_PATH)
 
     metrics = VALID_METRICS.keys()
 
     aggregated_metrics = {}
+    thresholds = []
 
-    for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
-        if V2:
-            output_map = get_instance_output_v2(IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, ckpt=CKPT)
-        else:
-            output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=DIS_THRESHOLD, ckpt=CKPT)
-        out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
-        out_npy = out_file_prefix + '.npy'
-        out_img = out_file_prefix + '.png'
-        out_b_img = out_file_prefix + '_both.png'
-        out_p_img = out_file_prefix + '_pred.png'
-        out_l_img = out_file_prefix + '_label.png'
-        np.save(out_npy, output_map)
-        image = draw_label_boundaries(ori, output_map.copy())
-        imsave(out_img, image.astype(np.uint8))
-        mlflow.log_artifact(out_npy)
-        mlflow.log_artifact(out_img)
-
+    for step, k in enumerate(np.linspace(st, ed, num)):
+        thresholds.append(k)
+        mlflow.log_metric('threshold', k, step=step)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=k)
         label, _ = dataset.read_labels(IDX, SPLIT)
-        point_mask = dataset.read_points(IDX, SPLIT)
         s = score(output_map, label, *metrics)
-
-        for img, p in zip(mark_nuclei(ori, output_map, label, s['nucleuswise_point']), [out_b_img, out_p_img, out_l_img]):
-            img[point_mask] = [255, 255, 0]
-            imsave(p, img)
-            mlflow.log_artifact(p)
-
         for metric in metrics:
             value = s[metric]
             if isinstance(value, dict):
                 for key, val in value.items():
                     if not isinstance(val, list):
                         metric_name = metric + '_' + key
-                        mlflow.log_metric(metric_name, val, step=(IDX-1))
+                        mlflow.log_metric(metric_name, val, step=step)
                         if metric_name not in aggregated_metrics:
                             aggregated_metrics[metric_name] = []
                         aggregated_metrics[metric_name].append(val)
             else:
-                mlflow.log_metric(metric, value, step=(IDX-1))
+                mlflow.log_metric(metric, value, step=step)
                 if metric not in aggregated_metrics:
                     aggregated_metrics[metric] = []
                 aggregated_metrics[metric].append(value)
 
     for metric, score_list in aggregated_metrics.items():
         mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
+
+    mlflow.log_metric("best_threshold", thresholds[np.argmax(aggregated_metrics['DICE2'])])
 
 
 if __name__ == "__main__":
