@@ -1,7 +1,7 @@
 import numpy as np
-from performance import OutTime
+from histocartography.image.VorHoVerNet.performance import OutTime
 
-def get_voronoi_edges(point_mask, view=False, extra_out=None):
+def get_voronoi_edges(point_mask, view=False, extra_out=None, l2_norm=True):
     '''
     Compute Voronoi edges from point mask.
     Args:
@@ -11,14 +11,20 @@ def get_voronoi_edges(point_mask, view=False, extra_out=None):
             Results:
             'dist_map' (numpy.ndarray[float]): distance map.
             'Voronoi_cell' (numpy.ndarray[int]): cell colormap. (positive integer indicates instance index.)
+        l2_norm (bool): whether to use L2 norm as distance.
     Returns:
         edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     Note: 'point' means one pixel per point.
     Reference: some codes from https://gist.github.com/bert/1188638
     '''
-    def dist_func(row, col):
-        nonlocal r, c
-        return (row - r)**2 + (col - c)**2
+    if l2_norm:
+        def dist_func(row, col):
+            nonlocal r, c
+            return (row - r)**2 + (col - c)**2
+    else:
+        def dist_func(row, col):
+            nonlocal r, c
+            return abs(row - r) + abs(col - c)
     
     # create voronoi diagram (color_map)
     shape = point_mask.shape[:2]

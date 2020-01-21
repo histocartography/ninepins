@@ -1,5 +1,5 @@
 import numpy as np
-from Voronoi_label import get_voronoi_edges
+from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 def get_boundary(img):
     """
@@ -70,7 +70,7 @@ def get_distancemaps(point_mask, seg_mask, use_full_mask=False):
     seg_mask = seg_mask if len(seg_mask.shape) == 2 else seg_mask[:, :, 0]
     if use_full_mask:
         colormap = seg_mask
-        seg_mask = np.where(seg_mask > 0, 1, 0)
+        seg_mask = seg_mask > 0
     else:
         # get color map
         maps = {}

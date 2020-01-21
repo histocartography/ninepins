@@ -6,8 +6,8 @@ from minio import Minio
 from minio.error import ResponseError
 from PIL import Image
 from skimage.io import imread, imsave
-from constants import DATASET_IDX_LIMITS
-from utils import get_point_from_instance
+from histocartography.image.VorHoVerNet.constants import DATASET_IDX_LIMITS
+from histocartography.image.VorHoVerNet.utils import get_point_from_instance
 
 class CoNSeP:
     """
@@ -48,22 +48,25 @@ class CoNSeP_local(CoNSeP_common):
     """
     Dataset wrapper class for reading images and labels from local CoNSeP dataset.
     """
-    def __init__(self, root="CoNSeP/"):
+    def __init__(self, itr=0, root="CoNSeP/"):
         self.root = root
+        self.itr = itr
 
-    def get_path(self, idx, split, type_):
+    def get_path(self, idx, split, type_, itr=None):
         """
         Return the path for the requested data.
         Returns:
             path (str)
         """
+        if itr is None:
+            itr = self.itr
         path = self.root
         if type_ == "image":
             path += f"{split.capitalize()}/Images/{split}_{idx}.png"
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
         else:
-            path += f"{split.capitalize()}/PseudoLabels/{split}_{idx}.png"
+            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
         return path
 
     def read_image(self, idx, split):
@@ -101,10 +104,10 @@ class CoNSeP_local(CoNSeP_common):
         """
         Read pseudo segmentation label from dataset.
         Returns:
-            pseudo_label (numpy.ndarray[uint8])
+            pseudo_label (numpy.ndarray[float32])
         """
         self.check_idx(idx, split)
-        return imread(self.get_path(idx, split, "pseudo"))
+        return np.load(self.get_path(idx, split, "pseudo"))[..., 0]
 
     def __str__(self):
         """

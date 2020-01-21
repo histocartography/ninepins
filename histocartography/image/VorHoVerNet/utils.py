@@ -1,8 +1,11 @@
-import numpy as np
+from collections.abc import Callable, Iterable, Mapping
 import matplotlib.pyplot as plt
-from skimage.io import imsave
+import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
-from collections.abc import Mapping, Iterable, Callable
+from skimage.color import label2rgb
+from skimage.io import imsave
+from skimage.morphology import dilation, disk
+from histocartography.image.VorHoVerNet.constants import LABEL_COLOR_LIST
 
 class Cascade:
     """
@@ -45,6 +48,14 @@ class Cascade:
                     print(str(e))
         return x
 
+def broadcastable(func):
+    def func_(*args, **kwargs):
+        if len(args) > 1:
+            return [func(arg, **kwargs) for arg in args]
+        else:
+            return func(*args, **kwargs)
+    return func_
+
 def image_to_save(im):
     """
     Prepare an image for saving.
@@ -54,7 +65,7 @@ def image_to_save(im):
     else:
         return im.astype("uint8")
 
-def get_point_from_instance(inst, ignore_size=10, binary=False):
+def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="centroid"):
     """
     Args:
         inst (numpy.ndarray[int]): instance map of nuclei. (integers larger than 0 indicates the nuclear instance)
@@ -72,9 +83,9 @@ def get_point_from_instance(inst, ignore_size=10, binary=False):
         if coords.shape[0] <= ignore_size:
             continue
         if binary:
-            point_map[get_center(coords)] = True
+            point_map[get_center(coords, mode=center_mode)] = True
         else:
-            point_map[get_center(coords)] = inst_idx
+            point_map[get_center(coords, mode=center_mode)] = inst_idx
     return point_map
 
 def booleanize_point_labels(pt_lbls):
@@ -104,7 +115,7 @@ def get_center(coords, mode="extrema"):
             M, m = np.max(coords_d), np.min(coords_d)
             center.append(int((M + m) / 2))
         return tuple(center)
-    elif mode == "mass":
+    elif mode == "centroid":
         return coords.sum(axis=0) / coords.shape[0]
     else:
         raise ValueError("Unknown mode")
@@ -159,11 +170,38 @@ def draw_boundaries(image, mask, color=[0, 255, 0]):
         assert len(color) == 3 or len(color) == 1, "Invalid color length."
         for c in color:
             assert 0 <= c <= 255, "Invalid color."
+    if len(image.shape) == 2:
+        image = image[..., None]
+    if image.shape[2] == 1:
+        image = np.repeat(image, 3, axis=-1)
     mask = np.where(mask, 255, 0)
     gradient = get_gradient(mask)
     image[gradient > 0] = color
+    return image
 
-def get_valid_view(image, patch_size=270, valid_size=80):
+def get_label_boundaries(labeled_seg, d=1):
+    gd = get_gradient(labeled_seg)
+    labeled_seg[gd == 0] = 0
+    labeled_seg = dilation(labeled_seg, disk(d))
+    return labeled_seg
+
+def random_sub_list(l, bound=3):
+    length = len(l)
+    st = np.random.randint(0, bound)
+    return l[st:]
+
+def draw_label_boundaries(ori, labeled_seg, d=1):
+    img = ori.copy()
+    labeled_seg = get_label_boundaries(labeled_seg, d=d)
+    colors = random_sub_list(LABEL_COLOR_LIST)
+    rgb_labeled_seg = (label2rgb(labeled_seg, colors=colors) * 255).astype(np.uint8)
+    labeled_seg = labeled_seg == 0
+    labeled_seg = labeled_seg[..., None]
+    labeled_seg = np.concatenate((labeled_seg, labeled_seg, labeled_seg), axis=2)
+    labeled_seg = np.where(labeled_seg, img, rgb_labeled_seg)
+    return labeled_seg
+
+def get_valid_view(image, patch_size=270, valid_size=80, requested_size=1000):
     """
     Crop the image into only valid region according to the patch size and valid size.
     Args:
@@ -179,11 +217,12 @@ def get_valid_view(image, patch_size=270, valid_size=80):
     cols = int((w - patch_size) / valid_size + 1)
     y_end = offset + rows * valid_size
     x_end = offset + cols * valid_size
-    return image[offset: y_end, offset: x_end, ...]
+    return image[offset: y_end, offset: x_end, ...][:requested_size, :requested_size, ...]
 
 def scale(img, vmax, vmin):
     """
     Scale an image into [vmin, vmax]. (Positive and negative values are scaled independently.)
+    ----- img no copy -----
     Args:
         img (numpy.ndarray[any]): the image.
         vmax (number): maximum value.
@@ -191,7 +230,7 @@ def scale(img, vmax, vmin):
     Returns:
         scaled_image (numpy.ndarray[any])
     """
-    img = img.copy()
+    # img = img.copy()
     max_ = img.max() 
     min_ = img.min() 
     if max_ != 0:
@@ -219,12 +258,15 @@ def shift_and_scale(img, vmax, vmin):
     img *= (vrang / rang)
     return img
 
-def show(img):
+@broadcastable
+def show(img, save_name=None, figure_settings={}, save_settings={}):
     """
     Plot an image.
     Args:
         img (numpy.ndarray[any]): the image.
     """
+    plt.figure(**figure_settings)
     plt.imshow(img)
+    if save_name is not None:
+        plt.savefig(save_name, **save_settings)
     plt.show()
-    
