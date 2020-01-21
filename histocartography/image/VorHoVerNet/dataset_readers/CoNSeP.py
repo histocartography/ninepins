@@ -134,12 +134,14 @@ class CoNSeP_S3(CoNSeP_common):
             path (str)
         """
         if split == "train":
-            split = "training"
+            split_folder = "training"
+        else:
+            split_folder = split
         path = self.root
         if type_ == "image":
-            path += f"{split}_data/{split}_{idx}.png"
+            path += f"{split_folder}_data/{split}_{idx}.png"
         else:
-            path += f"{split}_data/{split}_nuclei_{idx}.json"
+            path += f"{split_folder}_data/{split}_nuclei_{idx}.json"
         return path
 
     def convert_image(self, obj):
