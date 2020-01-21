@@ -6,7 +6,7 @@ from minio import Minio
 from minio.error import ResponseError
 from PIL import Image
 from skimage.io import imread, imsave
-from histocartography.image.VorHoVerNet.constants import DATASET_IDX_LIMITS
+from histocartography.image.VorHoVerNet.constants import DATASET_IDX_LIMITS, MONUSEG_IDX_2_UID
 from histocartography.image.VorHoVerNet.utils import get_point_from_instance
 
 class MoNuSeg:
@@ -61,10 +61,11 @@ class MoNuSeg_local(MoNuSeg_common):
         if itr is None:
             itr = self.itr
         path = self.root
+        uid = MONUSEG_IDX_2_UID[split][idx-1]
         if type_ == "image":
-            path += f"{split.capitalize()}/Images/{split}_{idx}.png"
+            path += f"{split.capitalize()}/Images/{split}_{uid}.png"
         elif type_ == "label":
-            path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
+            path += f"{split.capitalize()}/Labels/{split}_{uid}.npy"
         else:
             path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
         return path
@@ -138,10 +139,11 @@ class MoNuSeg_S3(MoNuSeg_common):
         else:
             split_folder = split
         path = self.root
+        uid = MONUSEG_IDX_2_UID[split][idx-1]
         if type_ == "image":
-            path += f"{split_folder}_data/{split}_{idx}.png"
+            path += f"{split_folder}_data/{split}_{uid}.png"
         else:
-            path += f"{split_folder}_data/{split}_nuclei_{idx}.json"
+            path += f"{split_folder}_data/{split}_nuclei_{uid}.json"
         return path
 
     def convert_image(self, obj):
