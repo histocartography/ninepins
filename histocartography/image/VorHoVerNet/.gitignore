@@ -1,6 +1,7 @@
 # local dataset
 
 CoNSeP/*
+MoNuSeg/*
 savers_pl/*
 
 # training results
