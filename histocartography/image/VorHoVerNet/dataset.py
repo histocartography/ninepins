@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from skimage.io import imread, imsave
+from skimage.morphology import binary_dilation, disk
 from torch.utils.data import Dataset
 from histocartography.image.VorHoVerNet.dataset_reader import *
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
@@ -100,7 +101,11 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
         point_mask = data_reader.read_points(i, split)
-        
+
+        # get dor masks
+        dot_mask = binary_dilation(point_mask, selem=disk(2))
+        dot_mask = np.expand_dims(dot_mask, axis=-1)
+
         # get cluster masks
         seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
         seg_mask_w_edges = seg_mask & (edges == 0)
@@ -116,6 +121,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
 
         # save npy file (and png file for visualization)
         path_pseudo = f'{root}/{split.capitalize()}/PseudoLabels_{itr}'
+        pseudo_mask = np.concatenate((pseudo_mask, dot_mask), axis=-1)
         os.makedirs(path_pseudo, exist_ok=True)
         imsave(f'{path_pseudo}/{split}_{i}.png', seg_mask_w_edges.astype(np.uint8) * 255)
         np.save(f'{path_pseudo}/{split}_{i}.npy', pseudo_mask)

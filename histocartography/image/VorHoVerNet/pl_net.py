@@ -1,6 +1,7 @@
 import time
 import torch
 import random
+import mlflow
 import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
@@ -8,7 +9,7 @@ from histocartography.image.VorHoVerNet.utils import scale
 
 class plNet(pl.LightningModule):
 
-    def __init__(self, model, loss, data_loaders, lr=1e-4, visualize=False, vdir='model', ckpt=None):
+    def __init__(self, model, loss, data_loaders, lr=1e-4, visualize=False, vdir='model', ckpt=False, use_mlflow_log=None, log_interval=5):
         super(plNet, self).__init__()
 
         self.model = model
@@ -16,7 +17,10 @@ class plNet(pl.LightningModule):
         self.data_loaders = data_loaders
         self.lr = lr
         self.visualize = visualize
+        self.use_mlflow_log = use_mlflow_log
+        self.log_interval = log_interval
 
+        self.use_mlflow_log = True if self.use_mlflow_log is not None else False
         self.start_epoch = 0
         self.num_patches = [len(dl.dataset) for dl in data_loaders.values()]
         self.rints = [None, None]
@@ -26,7 +30,13 @@ class plNet(pl.LightningModule):
 
         self.optimizers = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         # print(list(self.model.state_dict().keys())[:10])
+
+        self.training_step_count = 0
+        self.validation_step_count = 0
+        self.validation_end_count = 0
         
+        ###########
+        ckpt = None
         if ckpt is not None:
             print(f'Restore model from {ckpt}.')
             checkpoint = torch.load(ckpt)
@@ -151,7 +161,13 @@ class plNet(pl.LightningModule):
                 self.rints[0] = random.randint(0, self.num_patches[0]//img.shape[0])
             if idx == self.rints[0]:
                 self.inf_batch_t = batch
-        return {'loss': loss}
+        log = {'train_loss': loss}
+        # if self.use_mlflow_log:
+        #     mlflow.log_metric(
+        #         'train_loss', loss_dict['loss'].detach().numpy(), step=self.training_step_count
+        #     )
+        #     self.training_step_count += 1
+        return {'loss': loss, 'log': log}
 
     # def training_end(self, outputs):
     #     print(type(outputs))
@@ -176,7 +192,13 @@ class plNet(pl.LightningModule):
                 self.inf_batch_v = batch
         # if idx == self.rints[1]:
         #     print(batch[0, :, 50, 50], self.inf_batch_t[0, :, 50, 50])
-        return {'val_loss': self.loss(preds, gts)}
+        loss_dict = {'val_loss': self.loss(preds, gts)}
+        if self.use_mlflow_log:
+            mlflow.log_metric(
+                'val_loss', loss_dict['val_loss'].detach.numpy(), step=self.validation_step_count
+            )
+            self.validation_step_count += 1
+        return loss_dict
 
     def validation_end(self, outputs):
         # print(outputs)
@@ -189,8 +211,16 @@ class plNet(pl.LightningModule):
                 # TODO: pass val_loss and show on figure
                 self.inference()
         # self.epoch += 1
-        return {'val_loss': avg_val_loss, 
-                'progress_bar': {'val_loss': avg_val_loss}}
+        loss_dict = {
+            'val_loss': avg_val_loss, 
+            'progress_bar': {'val_loss': avg_val_loss}
+        }
+        if self.use_mlflow_log:
+            mlflow.log_metric(
+                'avg_val_loss', loss_dict['val_loss'].detach().numpy(), step=self.validation_end_count
+            )
+            self.validation_end_count += 1
+        return loss_dict
     
     # def test_step(self, batch, idx):
     #     img, gts = batch

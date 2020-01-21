@@ -7,6 +7,7 @@ savers_pl/*
 
 inference/*
 output/*
+VorHoVerNet_training/*
 *.ckpt
 *.pt
 *.pkl
@@ -21,3 +22,6 @@ config.py
 train.py
 compare.py
 inference.py
+dataset_iter.py
+no_gpu_need.lsf
+train.sh
