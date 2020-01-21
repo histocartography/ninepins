@@ -1,6 +1,6 @@
 import numpy as np
 from skimage.morphology import label as cc
-from histocartography.image.VorHoVerNet.utils import get_label_boundaries, show
+from histocartography.image.VorHoVerNet.utils import get_label_boundaries, show, get_point_from_instance
 
 def overall_IOU(output_map, label):
     """
@@ -383,11 +383,98 @@ def SQ(output_map, label, stats=None):
     TP = stats['TP']
     return sum_IOU / TP
 
-def PQ(output_map, label):
-    stats = nucleuswise_stats(output_map, label)
+def PQ(output_map, label, stats=None):
+    if stats is None:
+        stats = nucleuswise_stats(output_map, label)
     dq = DQ(output_map, label, stats=stats)
     sq = SQ(output_map, label, stats=stats)
     return dq * sq
+
+def nucleuswise_point_stats(output_map, label):
+    """
+    Compute nucleus-wise statistics of model output and label.
+    Sensitivity, and Specificity.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        (dict)
+            'TP' (int): True Positive (annotation)
+            'TP_pred' (int): True Positive (prediction)
+            'FP' (int): False Positive
+            'FN' (int): False Negative
+            'Precision' (float): precision
+            'Sensitivity (float)': sensitivity
+
+    Under nucleus-wise condition, we can only define TP, FN, and FP (and thus Precision and Sensitivity).
+    Definition of TP:
+        # of annotated nuclei that are covered by one predicted nucleus (a predicted nucleus can only be assigned to one annotated nucleus)
+        NOTE: # is different in model output and label,
+            since one nucleus in prediction could cover multiple nuclei in label and vice versa.
+    Definition of FN:
+        (# of annotated nuclei) - TP (# in label)
+    Definitoin of FP:
+        (# of predicted nuclei) - TP (# in prediction)
+    NOTE: label needs to be cropped first to fit the valid size of the model.
+    """
+
+    label = get_point_from_instance(label)
+    output_map = output_map.copy()
+
+    MAX_LABEL_IDX = int(label.max())
+    TP = 0
+    hit = [False] * int(output_map.max())
+    FN_list = []
+    TP_list = []
+
+    for idx in range(1, MAX_LABEL_IDX + 1):
+        if np.count_nonzero(label == idx) == 0: continue
+        covered_pred_idx = output_map[label == idx][0]
+
+        if covered_pred_idx != 0:
+            TP += 1
+            hit[covered_pred_idx - 1] = True
+            output_map[output_map == covered_pred_idx] = 0
+            TP_list.append(idx)
+        else:
+            FN_list.append(idx)
+
+    FP_list = []
+    TP_pred_list = []
+    for i, hit_ in enumerate(hit):
+        if hit_:
+            TP_pred_list.append(i+1)
+        else:
+            FP_list.append(i+1)
+
+    TP_pred = np.count_nonzero(hit)
+
+    FN = len(FP_list)
+    FP = len(FP_list)
+
+    Precision = TP_pred / len(hit)
+    Sensitivity = TP / MAX_LABEL_IDX
+
+    return {
+        'TP': TP,
+        'TP_pred': TP_pred,
+        'FP': FP,
+        'FN': FN,
+        'TP_list': TP_list,
+        'TP_pred_list': TP_pred_list,
+        'FP_list': FP_list,
+        'FN_list': FN_list,
+        'Precision': Precision,
+        'Sensitivity': Sensitivity
+    }
+
+def DQ_point(output_map, label, stats=None):
+    if stats is None:
+        stats = nucleuswise_point_stats(output_map, label)
+    TP = stats['TP']
+    FP = stats['FP']
+    FN = stats['FN']
+    return TP / (TP + 0.5*FP + 0.5*FN)
 
 # Mapping from metrics name to computation function
 VALID_METRICS = {
@@ -400,7 +487,16 @@ VALID_METRICS = {
     'obj-AJI': obj_AJI,
     'DQ': DQ,
     'SQ': SQ,
-    'PQ': PQ
+    'PQ': PQ,
+    'nucleuswise_point': nucleuswise_point_stats,
+    'DQ_point': DQ_point
+}
+
+DEPENDENCIES = {
+    'PQ': 'nucleuswise',
+    'DQ': 'nucleuswise',
+    'SQ': 'nucleuswise',
+    'DQ_point': 'nucleuswise_point'
 }
 
 def score(output_map, label, *metrics):
@@ -415,11 +511,30 @@ def score(output_map, label, *metrics):
             metrics_name (str): metrics value
             ...
     """
+    for idx in range(1, int(label.max()) + 1):
+        if np.count_nonzero(label == idx) < 10:
+            label[label == idx] = 0
+            label[label > idx] -= 1
     res = {}
+    done_metrics = []
     for metric in metrics:
+        if metric in done_metrics: continue
         try:
-            metric_function = VALID_METRICS[metric]
-            res[metric] = metric_function(output_map, label)
+            if metric in DEPENDENCIES:
+                dep = DEPENDENCIES[metric]
+                if dep in done_metrics:
+                    stats = res[dep]
+                else:
+                    metric_function = VALID_METRICS[dep]
+                    stats = metric_function(output_map, label)
+                    res[dep] = stats
+                    done_metrics.append(dep)
+                metric_function = VALID_METRICS[metric]
+                res[metric] = metric_function(output_map, label, stats=stats)
+            else:
+                metric_function = VALID_METRICS[metric]
+                res[metric] = metric_function(output_map, label)
+            done_metrics.append(metric)
         except KeyError:
             print('{} is not a valid metric. skipped.'.format(metric))
     
@@ -479,13 +594,18 @@ def mark_nuclei(image_, output_map, label, stats=None):
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
     IDX = 1
-    prefix = 'mlflow_new_metrics'
+    prefix = 'mlflow_zeros'
     # prefix = 'curr_cell_new'
     # prefix = 'new_cell_new_l2'
     # prefix = 'new_cell_new_instance'
     dataset = CoNSeP(download=False)
     
     # m = 'DICE2'
+
+    output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+    label, _ = dataset.read_labels(IDX, 'test')
+
+    print(score(output_map, label, *VALID_METRICS.keys())['DQ_point'])
 
     # for metrics in ['DICE2', 'avgIOU', 'IOU', 'AJI']:
     # for metrics in ['DQ', 'SQ', 'PQ']:
@@ -496,8 +616,8 @@ if __name__ == "__main__":
     #         run(prefix, metrics)
     #     print("}" + metrics)
 
-    image = dataset.read_image(IDX, 'test')
-    output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
-    label, _ = dataset.read_labels(IDX, 'test')
+    # image = dataset.read_image(IDX, 'test')
+    # output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+    # label, _ = dataset.read_labels(IDX, 'test')
 
-    mark_nuclei(image, output_map, label)
+    # mark_nuclei(image, output_map, label)
