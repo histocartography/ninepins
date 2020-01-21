@@ -28,7 +28,7 @@ def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
     padded[:, ori_w:, 1] = -padded[:, ori_w:, 1]
     padded[ori_h:, :, 2] = -padded[ori_h:, :, 2]
     return padded
-
+ 
 def flip_image(img, flip, mode='normal', contain_both=False):
     """
     Return three other image copies through flip operation.
@@ -102,7 +102,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         lab, type_ = data_reader.read_labels(i, split)
         point_mask = data_reader.read_points(i, split)
 
-        # get dor masks
+        # get dot masks
         dot_mask = binary_dilation(point_mask, selem=disk(2))
         dot_mask = np.expand_dims(dot_mask, axis=-1)
 
