@@ -23,7 +23,7 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges, k=3):
     clusters = get_clusters(image, distance_map, k=k)
     from skimage.io import imsave
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
-    imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
+    # imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
 def concat_normalize(*features):
@@ -110,7 +110,8 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     """
 
     """refine nuclei"""
-    refined_nuclei = Cascade(intermediate_prefix="test cases/cluster")\
+    # intermediate_prefix="test cases/cluster"
+    refined_nuclei = Cascade()\
                         .append(remove_small_objects, 30)\
                         .append(binary_dilation, disk(3))\
                         .append(binary_fill_holes)\
