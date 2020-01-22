@@ -82,7 +82,7 @@ def get_pseudo_masks(seg_mask, point_mask, inst, contain_both=False):
         return pseudo_mask, full_mask
     return pseudo_mask
     
-def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False):
+def gen_pseudo_masks(data_reader, split='train', itr=0, contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
@@ -92,7 +92,8 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         contain_both (bool): if contain exhausted masks
     """
     
-    data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
+    # data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
+    root = data_reader.root.split("/")[0]
     IDX_LIMITS = data_reader.IDX_LIMITS
     
     for i in range(1, IDX_LIMITS[split] + 1):
@@ -297,5 +298,7 @@ class CoNSeP_cropped(Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    gen_pseudo_masks(split='train', contain_both=True)
-    gen_pseudo_masks(split='test', contain_both=True)
+    # dataset = CoNSeP(download=False)
+    dataset = MoNuSeg(download=False)
+    gen_pseudo_masks(dataset, split='train', contain_both=True)
+    # gen_pseudo_masks(dataset, split='test', contain_both=True)
