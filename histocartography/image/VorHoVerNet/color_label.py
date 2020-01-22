@@ -22,7 +22,7 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges, k=3):
     """
     clusters = get_clusters(image, distance_map, k=k)
     from skimage.io import imsave
-    nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
+    nuclear_index, background_index = find_nuclear_cluster(image, clusters, point_mask)
     # imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
 
@@ -43,7 +43,7 @@ def concat_normalize(*features):
         features_.append(feature / maximum)
     return np.concatenate(features_, axis=2)
 
-def find_nuclear_cluster(clstrs, point_mask):
+def find_nuclear_cluster(image, clstrs, point_mask):
     """
     Find the cluster with maximum overlaps with point labels.
     Args:
@@ -54,10 +54,14 @@ def find_nuclear_cluster(clstrs, point_mask):
             nclr_clstr_idx (int): nuclear cluster index
             bkgrd_clstr_idx (int): background cluster index.
     """
-    dilated_pt_mask = binary_dilation(point_mask, disk(5))
-    overlaps = [np.count_nonzero(dilated_pt_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
-    nclr_clstr_idx = np.argmax(overlaps)
-    bkgrd_clstr_idx = np.argmin(overlaps)
+    # dilated_pt_mask = binary_dilation(point_mask, disk(5))
+    # overlaps = [np.count_nonzero(dilated_pt_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
+    # nclr_clstr_idx = np.argmax(overlaps)
+    # bkgrd_clstr_idx = np.argmin(overlaps)
+    image = rgb2hed(image)
+    h_means = [image[clstrs == i][..., 0].mean() for i in range(int(clstrs.max()) + 1)]
+    nclr_clstr_idx = np.argmax(h_means)
+    bkgrd_clstr_idx = np.argmin(h_means)
     assert nclr_clstr_idx != bkgrd_clstr_idx, "Image is invalid"
     return nclr_clstr_idx, bkgrd_clstr_idx
 
@@ -112,10 +116,10 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     # intermediate_prefix="test cases/cluster"
     refined_nuclei = Cascade()\
                         .append(remove_small_objects, 30)\
-                        .append(binary_dilation, disk(3))\
-                        .append(binary_fill_holes)\
-                        .append(binary_erosion, disk(3))\
                         .append("__or__", binary_dilation(point_mask, disk(5)))\
+                        .append(binary_dilation, disk(1))\
+                        .append(binary_fill_holes)\
+                        .append(binary_erosion, disk(1))\
                         (nuclei)
     # .append("__and__", edges == 0)\ 152
     # .append(binary_erosion, disk(2))\
