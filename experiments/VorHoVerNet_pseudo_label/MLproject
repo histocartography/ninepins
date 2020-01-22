@@ -1,0 +1,10 @@
+name: VorHoVerNet_pseudo_label
+
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      split: {type: string, default: test}
+      prefix: string
+    command: "python3 script.py -s {split} -p {prefix}"
