@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from skimage.io import imread, imsave
-from skimage.morphology import binary_dilation, disk
+from skimage.morphology import binary_dilation, disk, label
 from torch.utils.data import Dataset
 from histocartography.image.VorHoVerNet.dataset_reader import *
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
@@ -82,7 +82,7 @@ def get_pseudo_masks(seg_mask, point_mask, inst, contain_both=False):
         return pseudo_mask, full_mask
     return pseudo_mask
     
-def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False):
+def gen_pseudo_masks(data_reader, split='train', itr=0, contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
@@ -92,7 +92,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         contain_both (bool): if contain exhausted masks
     """
     
-    data_reader = CoNSeP(root=root, download=False) if root is not None else CoNSeP(download=False)
+    root = data_reader.root.split("/")[0]
     IDX_LIMITS = data_reader.IDX_LIMITS
     
     for i in range(1, IDX_LIMITS[split] + 1):
@@ -110,6 +110,13 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
         seg_mask_w_edges = seg_mask & (edges == 0)
 
+        seg_mask_w_edges = label(seg_mask_w_edges, connectivity=1)
+        for seg_idx in np.unique(seg_mask_w_edges):
+            if seg_idx == 0: continue
+            if np.count_nonzero((seg_mask_w_edges == seg_idx) & point_mask) == 0:
+                seg_mask_w_edges[seg_mask_w_edges == seg_idx] = 0
+        seg_mask_w_edges = seg_mask_w_edges > 0
+
         # generate distance maps
         # # mirror padding (1000x1000 to 1230x1230, 95 at left and top, 135 at right and bottom)
         # lab_, seg_mask_w_edges_, point_mask_ = [np.pad(tar, ((95, 135), (95, 135)), mode='reflect') for tar in [lab_, seg_mask_w_edges_, point_mask_]]
@@ -125,6 +132,8 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         os.makedirs(path_pseudo, exist_ok=True)
         rgb_mask = np.stack((seg_mask_w_edges*255,)*3, axis=-1).astype(np.uint8)
         rgb_mask[dot_mask[..., 0] == 1] = (255, 0, 0)
+
+        # imsave(f'{path_pseudo}/{split}_{i}.png', seg_mask_w_edges.astype(np.uint8) * 255)
         imsave(f'{path_pseudo}/{split}_{i}.png', rgb_mask)
         np.save(f'{path_pseudo}/{split}_{i}.npy', pseudo_mask)
         if contain_both:
@@ -301,5 +310,7 @@ class CoNSeP_cropped(Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    gen_pseudo_masks(split='train', contain_both=True)
-    gen_pseudo_masks(split='test', contain_both=True)
+    dataset = CoNSeP(download=False)
+    # dataset = MoNuSeg(download=False)
+    gen_pseudo_masks(dataset, split='train', itr=1, contain_both=True)
+    # gen_pseudo_masks(dataset, split='test', contain_both=True)
