@@ -10,7 +10,7 @@ from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, g
 CLUSTER_FEATURES = "CD"
 # C: rgb, D: distance, S: he
 
-def get_cluster_label(image, distance_map, point_mask, cells, edges):
+def get_cluster_label(image, distance_map, point_mask, cells, edges, k=3):
     """
     Compute color-based label from original image, distance map, and point mask.
     Args:
@@ -20,7 +20,7 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges):
         cells (numpy.ndarray[int]): cells mask.
         edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     """
-    clusters = get_clusters(image, distance_map)
+    clusters = get_clusters(image, distance_map, k=k)
     from skimage.io import imsave
     nuclear_index, background_index = find_nuclear_cluster(clusters, point_mask)
     imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
@@ -131,10 +131,11 @@ def refine_cluster(nuclei, background, cells, point_mask, edges):
     return res
 
 def main():
-    from dataset_reader import CoNSeP
+    import dataset_reader
     from Voronoi_label import get_voronoi_edges
     from argparse import ArgumentParser
     import re
+    import matplotlib.pyplot as plt
 
     parser = ArgumentParser(description="Cluster Label Generator (Experiment)")
     parser.add_argument("-f", "--features", default="CD",
@@ -146,8 +147,10 @@ def main():
                         help="index of the image in dataset")
     parser.add_argument("-s", "--split", default="test", choices=["test", "train"],
                         help="split of the dataset ([test, train])")
-    parser.add_argument("-m", "--masked-clustering", default=False, action="store_true",
-                        help="use masked images to do clustering")
+    parser.add_argument("-t", "--dataset", default="CoNSeP", choices=["CoNSeP", "MoNuSeg"],
+                        help="dataset ([CoNSeP, MoNuSeg])")
+    parser.add_argument("-k", "--num-clusters", default=3, type=int,
+                        help="number of clusters")
     args = parser.parse_args()
 
     global CLUSTER_FEATURES
@@ -158,11 +161,10 @@ def main():
     SPLIT = args.split
     EXP_NAME = args.name
 
-    dataset = CoNSeP(download=False)
+    dataset = getattr(dataset_reader, args.dataset)(download=False)
     image = dataset.read_image(IDX, SPLIT)
-    lab, type_ = dataset.read_labels(IDX, SPLIT)
+    lab, _ = dataset.read_labels(IDX, SPLIT)
     point_mask = get_point_from_instance(lab, binary=True)
-    typed_point_map = np.where(point_mask, type_, 0)
     # point_mask = dataset.read_points(IDX, SPLIT)
 
     out_dict = {}
@@ -170,12 +172,7 @@ def main():
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        if args.masked_clustering:
-            color_based_label = get_cluster_label_v2(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, typed_point_map)
-        else:
-            color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges)
-
-    import matplotlib.pyplot as plt
+        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=args.num_clusters)
 
     mask = (color_based_label == [0, 255, 0]).all(axis=2)
     draw_boundaries(image, mask)
