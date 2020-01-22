@@ -193,10 +193,7 @@ class MoNuSeg_S3(MoNuSeg_common):
         obj = self.minioClient.get_object("curated-datasets", self.get_path(idx, split, "label"))
         label = self.convert_labels(obj)
         instance_map = np.array(label["detected_instance_map"], dtype=int)
-        type_map = np.zeros_like(instance_map)
-        types = label["instance_types"]
-        for i, (t,) in enumerate(types):
-            type_map[instance_map == (i + 1)] = t
+        type_map = 1 * (instance_map > 0)
         return instance_map, type_map
 
     def read_points(self, idx, split):
@@ -209,7 +206,7 @@ class MoNuSeg_S3(MoNuSeg_common):
         obj = self.minioClient.get_object("curated-datasets", self.get_path(idx, split, "label"))
         label = self.convert_labels(obj)
         point_mask = np.zeros(label["image_dimension"][:2], dtype=bool)
-        for center in label["instance_centroid_location"]:
+        for center in label["inst_centroid"]:
             x, y = map(int, center)
             point_mask[y, x] = True
         return point_mask
