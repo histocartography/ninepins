@@ -5,7 +5,7 @@ from skimage.color import rgb2hed
 from skimage.morphology import *
 from sklearn.cluster import KMeans
 from histocartography.image.VorHoVerNet.performance import OutTime
-from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient
+from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient, show
 
 CLUSTER_FEATURES = "CD"
 # C: rgb, D: distance, S: he
@@ -54,10 +54,9 @@ def find_nuclear_cluster(clstrs, point_mask):
             nclr_clstr_idx (int): nuclear cluster index
             bkgrd_clstr_idx (int): background cluster index.
     """
-    overlaps = [np.count_nonzero(point_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
-    nclr_clstr_idx = np.argmax(overlaps)
     dilated_pt_mask = binary_dilation(point_mask, disk(5))
     overlaps = [np.count_nonzero(dilated_pt_mask & (clstrs == i)) for i in range(int(clstrs.max()) + 1)]
+    nclr_clstr_idx = np.argmax(overlaps)
     bkgrd_clstr_idx = np.argmin(overlaps)
     assert nclr_clstr_idx != bkgrd_clstr_idx, "Image is invalid"
     return nclr_clstr_idx, bkgrd_clstr_idx
@@ -148,7 +147,7 @@ def main():
                         help="index of the image in dataset")
     parser.add_argument("-s", "--split", default="test", choices=["test", "train"],
                         help="split of the dataset ([test, train])")
-    parser.add_argument("-t", "--dataset", default="CoNSeP", choices=["CoNSeP", "MoNuSeg"],
+    parser.add_argument("-d", "--dataset", default="CoNSeP", choices=["CoNSeP", "MoNuSeg"],
                         help="dataset ([CoNSeP, MoNuSeg])")
     parser.add_argument("-k", "--num-clusters", default=3, type=int,
                         help="number of clusters")
