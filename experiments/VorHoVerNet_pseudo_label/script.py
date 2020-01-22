@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script for testing label improvement
+Script for testing pseudo label generation
 """
 import logging
 import argparse
@@ -8,6 +8,7 @@ import numpy as np
 import sys
 import os
 import re
+from time import time
 import mlflow
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.metrics import score
@@ -20,7 +21,7 @@ get_cluster_label = color_label.get_cluster_label
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-log = logging.getLogger('Histocartography::LabelImprovement')
+log = logging.getLogger('Histocartography::PseudoLabel')
 h1 = logging.StreamHandler(sys.stdout)
 log.setLevel(logging.INFO)
 formatter = logging.Formatter(
@@ -120,7 +121,7 @@ def main(arguments):
 
     OutTime.switchOff = not arguments.out_time
 
-    features = re.sub("[^CDS]", "", args.features)
+    features = re.sub("[^CDS]", "", arguments.features)
     if features != "":
         color_label.CLUSTER_FEATURES = features
 
@@ -144,14 +145,14 @@ def main(arguments):
             color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=NUM_CLUSTERS)
 
         mask = (color_based_label == [0, 255, 0]).all(axis=2)
-        draw_boundaries(image, mask)
+        draw_boundaries(image, mask.copy())
         image[point_mask] = [255, 0, 0]
         
         out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.png'
         imsave(out_file, image.astype(np.uint8))
         mlflow.log_artifact(out_file)
         
-        s = score(new_cell, label, 'IOU')
+        s = score(1 * mask, label, 'IOU')
 
         IOU = s['IOU']
         IOUs.append(IOU)
