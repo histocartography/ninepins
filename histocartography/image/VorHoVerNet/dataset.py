@@ -21,14 +21,14 @@ def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
     """
     _channels = 3
     assert isinstance(pad_width, tuple), 'pad_width should be tuples in tuple'
-    assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
+    assert img.shape[-1] >= _channels, f'img channel must equal or greater than {_channels}, got {img.shape[-1]}'
 
     ori_h, ori_w = img.shape[:2]
     padded = np.pad(img, pad_width=pad_width, mode='reflect')
     padded[:, ori_w:, 1] = -padded[:, ori_w:, 1]
     padded[ori_h:, :, 2] = -padded[ori_h:, :, 2]
     return padded
- 
+
 def flip_image(img, flip, mode='normal', contain_both=False):
     """
     Return three other image copies through flip operation.
@@ -43,7 +43,7 @@ def flip_image(img, flip, mode='normal', contain_both=False):
     _channels = 3
     assert mode in ('normal', 'dist'), 'mode must be either normal or dist'
     if mode == 'dist':
-        assert img.shape[-1] == _channels, f'img channel must be {_channels}, got {img.shape[-1]}'
+        assert img.shape[-1] >= _channels, f'img channel must equal or greater than {_channels}, got {img.shape[-1]}'
 
     res = img.copy()
     if flip == 1:
@@ -101,7 +101,7 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
         point_mask = data_reader.read_points(i, split)
-
+        
         # get dot masks
         dot_mask = binary_dilation(point_mask, selem=disk(2))
         dot_mask = np.expand_dims(dot_mask, axis=-1)
@@ -120,16 +120,20 @@ def gen_pseudo_masks(root='./CoNSeP/', split='train', itr=0, contain_both=False)
             pseudo_mask = get_pseudo_masks(seg_mask_w_edges, point_mask, lab, contain_both=False)
 
         # save npy file (and png file for visualization)
-        path_pseudo = f'{root}/{split.capitalize()}/PseudoLabels_{itr}'
+        path_pseudo = f'{root}/{split.capitalize()}/PseudoLabels_{itr:02d}'
         pseudo_mask = np.concatenate((pseudo_mask, dot_mask), axis=-1)
         os.makedirs(path_pseudo, exist_ok=True)
-        imsave(f'{path_pseudo}/{split}_{i}.png', seg_mask_w_edges.astype(np.uint8) * 255)
+        rgb_mask = np.stack((seg_mask_w_edges*255,)*3, axis=-1).astype(np.uint8)
+        rgb_mask[dot_mask[..., 0] == 1] = (255, 0, 0)
+        imsave(f'{path_pseudo}/{split}_{i}.png', rgb_mask)
         np.save(f'{path_pseudo}/{split}_{i}.npy', pseudo_mask)
         if contain_both:
             seg_gt = lab > 0
             path_full = f'{root}/{split.capitalize()}/FullLabels'
             os.makedirs(path_full, exist_ok=True)
-            imsave(f'{path_full}/{split}_{i}.png', seg_gt.astype(np.uint8) * 255)
+            rgb_mask = np.stack((seg_gt,)*3, axis=-1).astype(np.uint8)
+            rgb_mask[dot_mask[..., 0] == 1] = (255, 0, 0)
+            imsave(f'{path_full}/{split}_{i}.png', rgb_mask)
             np.save(f'{path_full}/{split}_{i}.npy', full_mask)
     print('')
 

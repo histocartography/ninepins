@@ -184,6 +184,7 @@ def main(args):
     checkpoint_callback = ModelCheckpoint(
         filepath=f'./savers_pl/{MODEL_NAME}',
         save_best_only=True,
+        save_top_k=3,
         verbose=True,
         monitor=EARLY_STOP_MONITOR,
         mode='min',
