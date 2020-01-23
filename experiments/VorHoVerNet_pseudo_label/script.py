@@ -110,7 +110,7 @@ parser.add_argument(
     '--filter',
     type=bool,
     help='whether to filter out connected-components not covering any point',
-    default=False,
+    default=True,
     required=False
 )
 
