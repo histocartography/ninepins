@@ -105,6 +105,14 @@ parser.add_argument(
     default=True,
     required=False
 )
+parser.add_argument(
+    '-l',
+    '--filter',
+    type=bool,
+    help='whether to filter out connected-components not covering any point',
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
