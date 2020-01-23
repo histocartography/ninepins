@@ -16,7 +16,7 @@ from histocartography.image.VorHoVerNet.metrics import score
 from histocartography.image.VorHoVerNet.utils import draw_boundaries, get_point_from_instance
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
 # from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
-from histocartography.image.VorHoVerNet.performance import OutTime as OutTime_
+from histocartography.image.VorHoVerNet.performance import OutTime
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 # import histocartography.image.VorHoVerNet.color_label as color_label
 
@@ -31,13 +31,6 @@ formatter = logging.Formatter(
 h1.setFormatter(formatter)
 log.addHandler(h1)
 
-class OutTime(OutTime_):
-    def __exit__(self, type, value, traceback):
-        # print execution time when scope is closed.
-        if self.switchOff: return
-        t = time() - self.st
-        log.info("time passed: %5f s" % t)
-        self.onExit(t)
 
 # configure argument parser
 parser = argparse.ArgumentParser()
@@ -147,7 +140,7 @@ def main(arguments):
         label, _ = dataset.read_labels(IDX, SPLIT)
         point_mask = get_point_from_instance(label, binary=True)
 
-        with OutTime():
+        with OutTime(lambda t: log.info("time passed: %5f s" % t)):
             # color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=NUM_CLUSTERS)
             pseudo, edges = gen_pseudo_label(image, point_mask, return_edge=True, k=NUM_CLUSTERS, features=FEATURES)
 
