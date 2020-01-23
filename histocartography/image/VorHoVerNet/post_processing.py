@@ -124,6 +124,50 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     return res
 
+def _refine_instance_output(instance_map, point_pred, h=DEFAULT_H):
+    """
+    # *******         ********               *******                 
+    # *11111*         *333333*               *11111*                 
+    # *11O11******************               *11O11******************
+    # *11111*2222O222222O2222*               *11111*2222O222*33O3333*
+    # ************************               ************************
+    #                             ======>                            
+    #                                                *******         
+    #                                                *44444*         
+    #            O                                   *44O44*         
+    #                                                *44444*         
+    #                                                *******         
+    #                                                                
+    """
+    point_pred = point_pred > h
+    point_pred = label(point_pred)
+    point_mask = get_point_from_instance(point_pred, ignore_size=0)
+    point_hit = [False] * point_mask.max()
+    instance_map = label(instance_map)
+    base = instance_map.max()
+    for instance_idx in range(1, instance_map.max() + 1):
+        overlapped_points = np.unique((instance_map == instance_idx) * point_mask)
+        overlapped_points = overlapped_points[overlapped_points != 0]
+        for point in overlapped_points:
+            point_hit[point - 1] = True
+        num_of_overlaps = len(overlapped_points)
+        if num_of_overlaps == 0:
+            instance_map[instance_map == instance_idx] = 0
+        elif num_of_overlaps > 1:
+            seg = instance_map == instance_idx
+            new_seg = watershed(seg, markers=point_mask * seg, mask=seg)
+            step = new_seg.max()
+            new_seg[new_seg > 0] += base
+            base += step
+            instance_map[seg] = new_seg[seg]
+    miss_points = [(i+1) for i, hit in enumerate(point_hit) if not hit]
+    miss_point_mask = point_pred * np.isin(point_pred, miss_points)
+    miss_point_mask = label(miss_point_mask)
+    miss_point_mask[miss_point_mask > 0] += base
+    instance_map = np.where(instance_map == 0, miss_point_mask, instance_map)
+    instance_map = label(instance_map)
+    return instance_map
+
 def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
@@ -748,7 +792,7 @@ def _test_instance_output():
 
     os.makedirs('output', exist_ok=True)
 
-    prefix = 'output/mlflow_new_metrics'
+    prefix = 'output/mlflow_refine_point'
 
     use_patch_idx = False
     # use_patch_idx = True
@@ -759,9 +803,16 @@ def _test_instance_output():
     # for IDX in range(1, 2367):
     observe_idx = 1
     for IDX in range(observe_idx, observe_idx + 1):
-        for k in np.linspace(1, 2, 21):
-        # for k in [1.7]:
-            res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
+        # for k in np.linspace(1, 2, 21):
+        for k in [2.3]:
+            # res = get_instance_output(True, IDX, k=k, use_patch_idx=use_patch_idx)
+            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, use_patch_idx=use_patch_idx)
+            point_mask = dataset.read_points(IDX, 'test')
+            point_mask = binary_dilation(point_mask, disk(3))
+            point_pred = point_mask * 1
+            res = _get_instance_output(seg, hor, vet, k=k)
+            res = _refine_instance_output(res, point_pred)
+
             img = get_original_image_from_file(IDX, use_patch_idx=use_patch_idx)
 
             label = dataset.read_labels(IDX, 'test')[0]
@@ -771,9 +822,9 @@ def _test_instance_output():
 
             imsave('{}_{}.png'.format(prefix, IDX), img)
 
-            s = score(res, label, 'AJI')
+            s = score(res, label, 'DQ_point')
             
-            print(k, s['AJI'])
+            print(k, s['DQ_point'])
 
         # show(img)
 
