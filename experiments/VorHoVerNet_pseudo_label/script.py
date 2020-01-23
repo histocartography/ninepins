@@ -127,6 +127,7 @@ def main(arguments):
     DATASET = arguments.dataset
     PREFIX = arguments.prefix
     NUM_CLUSTERS = arguments.num_clusters
+    FILTER = arguments.filter
 
     OutTime.switchOff = not arguments.out_time
 
@@ -152,12 +153,13 @@ def main(arguments):
 
         pseudo = pseudo & (edges == 0)
 
-        pseudo = cc(pseudo, connectivity=1)
-        for seg_idx in np.unique(pseudo):
-            if seg_idx == 0: continue
-            if np.count_nonzero((pseudo == seg_idx) & point_mask) == 0:
-                pseudo[pseudo == seg_idx] = 0
-        pseudo = pseudo > 0
+        if FILTER:
+            pseudo = cc(pseudo, connectivity=1)
+            for seg_idx in np.unique(pseudo):
+                if seg_idx == 0: continue
+                if np.count_nonzero((pseudo == seg_idx) & point_mask) == 0:
+                    pseudo[pseudo == seg_idx] = 0
+            pseudo = pseudo > 0
 
         draw_boundaries(image, pseudo.copy())
         image[point_mask] = [255, 0, 0]
