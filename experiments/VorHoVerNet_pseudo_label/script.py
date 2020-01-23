@@ -11,13 +11,14 @@ import re
 from time import time
 import mlflow
 from skimage.io import imsave
+from skimage.morphology import label as cc
 from histocartography.image.VorHoVerNet.metrics import score
 from histocartography.image.VorHoVerNet.utils import draw_boundaries, get_point_from_instance
-from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
+from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
+# from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 from histocartography.image.VorHoVerNet.performance import OutTime as OutTime_
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
-import histocartography.image.VorHoVerNet.color_label as color_label
-get_cluster_label = color_label.get_cluster_label
+# import histocartography.image.VorHoVerNet.color_label as color_label
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -121,9 +122,7 @@ def main(arguments):
 
     OutTime.switchOff = not arguments.out_time
 
-    features = re.sub("[^CDS]", "", arguments.features)
-    if features != "":
-        color_label.CLUSTER_FEATURES = features
+    FEATURES = re.sub("[^CDS]", "", arguments.features)
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -139,20 +138,27 @@ def main(arguments):
         label, _ = dataset.read_labels(IDX, SPLIT)
         point_mask = get_point_from_instance(label, binary=True)
 
-        out_dict = {}
-        edges = get_voronoi_edges(point_mask, extra_out=out_dict)
         with OutTime():
-            color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=NUM_CLUSTERS)
+            # color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=NUM_CLUSTERS)
+            pseudo, edges = gen_pseudo_label(image, point_mask, return_edge=True, k=NUM_CLUSTERS, features=FEATURES)
 
-        mask = (color_based_label == [0, 255, 0]).all(axis=2)
-        draw_boundaries(image, mask.copy())
+        pseudo = pseudo & (edges == 0)
+
+        pseudo = cc(pseudo, connectivity=1)
+        for seg_idx in np.unique(pseudo):
+            if seg_idx == 0: continue
+            if np.count_nonzero((pseudo == seg_idx) & point_mask) == 0:
+                pseudo[pseudo == seg_idx] = 0
+        pseudo = pseudo > 0
+
+        draw_boundaries(image, pseudo.copy())
         image[point_mask] = [255, 0, 0]
         
         out_file = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}.png'
         imsave(out_file, image.astype(np.uint8))
         mlflow.log_artifact(out_file)
         
-        s = score(1 * mask, label, 'IOU')
+        s = score(1 * pseudo, label, 'IOU')
 
         IOU = s['IOU']
         IOUs.append(IOU)
