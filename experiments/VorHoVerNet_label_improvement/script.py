@@ -88,7 +88,7 @@ parser.add_argument(
 
 def main(arguments):
     """
-    Run post-processing on the split of dataset
+    Run label improvement on the split of dataset
     Args:
         arguments (Namespace): parsed arguments.
     """

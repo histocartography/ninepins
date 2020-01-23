@@ -75,7 +75,7 @@ parser.add_argument(
 
 def main(arguments):
     """
-    Run post-processing on the split of dataset
+    Run grid search of post-processing threshold on the split of dataset
     Args:
         arguments (Namespace): parsed arguments.
     """
