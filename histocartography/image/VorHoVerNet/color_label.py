@@ -7,7 +7,7 @@ from sklearn.cluster import KMeans
 from histocartography.image.VorHoVerNet.performance import OutTime
 from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient, show
 
-CLUSTER_FEATURES = "CD"
+CLUSTER_FEATURES = "C"
 # C: rgb, D: distance, S: he
 
 def get_cluster_label(image, distance_map, point_mask, cells, edges, k=3):
