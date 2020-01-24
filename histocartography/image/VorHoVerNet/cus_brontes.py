@@ -6,7 +6,7 @@ import numpy as np
 import pytorch_lightning as pl
 import matplotlib.pyplot as plt
 from brontes import Brontes
-from utils import scale
+from histocartography.image.VorHoVerNet.utils import scale
 
 
 class CusBrontes(Brontes):
@@ -15,15 +15,16 @@ class CusBrontes(Brontes):
     """
     def __init__(
         self,
-        model, loss,
+        model, 
+        loss,
         data_loaders,
         optimizers,
         metrics=None,
-        training_log_interval=100,
+        training_log_interval=150,
         tracker_type='logging',
         visualize=False,
         model_name='model_default',
-        root_path='./',
+        output_root='./',
         num_gpus=1
     ):
         """
@@ -39,23 +40,29 @@ class CusBrontes(Brontes):
                 Defaults to 100.
             tracker_type (str): type of tracker. Defaults to 'logging'.
         """
-        super(CusBrontes, self).__init__()
+        super(CusBrontes, self).__init__(
+            model, loss, data_loaders, optimizers,
+            metrics=metrics,
+            training_log_interval=training_log_interval,
+            tracker_type=tracker_type)
         """
         inherited from Brontes via super():
-            model, loss, data_loaders, optimizers, tracker;
             training_step_count, validation_step_count, validation_end_count
         """
         # new parameters
+        self.tracker_type = tracker_type
         self.visualize = visualize
         self.model_name = model_name
-        self.root_path = f'{root_path}/{model_name}' # for log_artifacts
+        self.output_root = output_root # for log_artifacts
         self.num_gpus = num_gpus
 
         self.start_epoch = 0
+        if self.tracker_type == 'mlflow':
+            mlflow.log_param('start epoch', self.start_epoch + 1)
         self.num_patches = [len(dl.dataset) for dl in data_loaders.values()]
         self.rints = [None, None]
         self.figpath = None
-        self.inf_batch_train, self.inf_batch_valid = None, None
+        self.inf_batch_train, self.inf_batch_valid = 10, 10
         self.inf_type = ('train', 'valid')
 
         self.check_params()
@@ -66,23 +73,22 @@ class CusBrontes(Brontes):
     def check_params(self):
         print('\nArguments:')
         print(f'\tstart epoch: {self.start_epoch + 1}')
-        print(f'\troot path: {self.root_path}')
+        print(f'\troot path: {self.output_root}')
         print(f'\tvisualize: {self.visualize}')
         if self.visualize:
             import os
-            self.figpath = f'{root_path}/visualize'
+            self.figpath = f'{self.output_root}/visualize'
             os.makedirs(self.figpath, exist_ok=True)
             print('\tinference image dir: {}'.format(self.figpath))
 
             # reminders
-            if self.gpus > 1:
+            if self.num_gpus > 1:
                 print("It is better to pass num_gpus if it is greater than 1 with visualize set to True.")
-
 
     def inference(self, gap=None, psize=270, vsize=80):
         """
         """
-        for typ, (imgs, gts) in enumerate((self.inf_batch_t, self.inf_batch_v)):     
+        for typ, (imgs, gts) in enumerate((self.inf_batch_train, self.inf_batch_valid)):     
             preds = self.model(imgs)
 
             # transpose and reshape
@@ -99,7 +105,7 @@ class CusBrontes(Brontes):
 
                 for a in ax.ravel():
                     a.axis('off')
-                fig.suptitle('Epoch {} on {} patch {}'.format(self.current_epoch, inference_on, i + 1), fontsize=16)
+                fig.suptitle(f'Epoch {self.current_epoch + 1} on {self.inf_type[typ]} patch {i + 1}', fontsize=16)
                 
                 # original image for every colume
                 ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
@@ -145,11 +151,14 @@ class CusBrontes(Brontes):
                 plt.cla()
             plt.close()
 
-    def log_artifacts(self)：
+    def log_artifacts(self):
         """
         Log directories as mlflow artifacts
         """
-        pass
+        dirs = [f'{self.output_root}/{name}' for name in ('checkpoints', 'visualize')]
+        for d in dirs:
+            mlflow.log_artifacts(d)
+            print(f"Log artifacts from {d}.")
 
     def training_step(self, batch, idx, mode='train'):
         img, gts = batch
@@ -171,7 +180,8 @@ class CusBrontes(Brontes):
             # prepare for inference
             if self.visualize and self.current_epoch == self.start_epoch:
                 if self.rints[0] is None:
-                    self.rints[0] = random.randint(0, self.num_patches[0]//img.shape[0]//self.num_gpus)
+                    # self.rints[0] = random.randint(0, (self.num_patches[0]*self.train_percent_check)/(img.shape[0] * self.num_gpus))
+                    self.rints[0] = 10
                 if idx == self.rints[0]:
                     self.inf_batch_train = batch
         return training_dict
@@ -181,35 +191,49 @@ class CusBrontes(Brontes):
         preds = self.forward(img)
 
         validation_dict = {
-            f'val_{name}': value for name, value in self.training_step(batch, idx, mode='valid')
+            f'val_{name}': value for name, value in self.training_step(batch, idx, mode='valid').items()
         }
         self.tracker.log_tensor_dict(
             validation_dict, step=self.validation_step_count
         )
         self.validation_step_count += 1
+
+        # prepare for inference
+        if self.visualize and self.current_epoch == self.start_epoch:
+            if self.rints[1] is None:
+                # self.rints[1] = random.randint(0, (self.num_patches[1]*self.val_percent_check)//(img.shape[0] * self.num_gpus))
+                self.rints[1] = 10
+            if idx == self.rints[1]:
+                self.inf_batch_valid = batch
         return validation_dict
 
     def validation_end(self, outputs):
         names = ['val_loss'] + [f'val_{name}' for name in self.metrics.keys()]
-        avg_dict = {
+        validation_end_dict = {
             f'avg_{name}': torch.stack([x[name] for x in outputs]).mean() for name in names
         }
-        validation_end_dict = {
-            avg_dict,
-            'progress_bar': {'val_loss': avg_dict['val_loss']}
-        }
         self.tracker.log_tensor_dict(
-            validation_end_dict, step=self.validation_end_count
+            validation_end_dict, step=self.training_step_count
         )
-        self.validation_end_count += 1
+        # self.validation_end_count += 1
+
+        if self.current_epoch >= self.start_epoch and self.rints[0] is not None:
+            print('')
+            print(f'Epoch {self.current_epoch + 1}, avg_val_loss: {validation_end_dict["avg_val_loss"]:.4f}\t\t\t')
+            if self.visualize:
+                # TODO: pass val_loss and show on figure
+                self.inference()
+
+        if self.tracker_type == 'mlflow':
+            mlflow.log_param('finished epoch', self.current_epoch + 1)
+
+        validation_end_dict['progress_bar'] = {'val_loss': validation_end_dict['avg_val_loss']}
         return validation_end_dict
 
     @pl.data_loader
     def train_dataloader(self):
-        print('\nEnter custom train dataloader method.\n')
         return self.data_loaders['train']
 
     @pl.data_loader
     def val_dataloader(self):
-        print('\nEnter custom val dataloader method.\n')
         return self.data_loaders['val']
