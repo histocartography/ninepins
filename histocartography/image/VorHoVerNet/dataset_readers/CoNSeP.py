@@ -48,8 +48,9 @@ class CoNSeP_local(CoNSeP_common):
     """
     Dataset wrapper class for reading images and labels from local CoNSeP dataset.
     """
-    def __init__(self, itr=0, root="CoNSeP/"):
+    def __init__(self, ver=0, itr=0, root="CoNSeP/"):
         self.root = root
+        self.ver = ver
         self.itr = itr
 
     def get_path(self, idx, split, type_, itr=None):
@@ -58,6 +59,9 @@ class CoNSeP_local(CoNSeP_common):
         Returns:
             path (str)
         """
+        types = ('image', 'label', 'pseudo', 'full')
+        assert type_ in types, f"type_ must be one in ({', '.join(types)}), but got {type_}"
+
         if itr is None:
             itr = self.itr
         path = self.root
@@ -65,8 +69,10 @@ class CoNSeP_local(CoNSeP_common):
             path += f"{split.capitalize()}/Images/{split}_{idx}.png"
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{idx}.npy"
-        else:
-            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
+        elif type_ == "pseudo":
+            path += f"{split.capitalize()}/version_{self.ver:02d}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
+        elif type_ == "full":
+            path += f"{split.capitalize()}/version_{self.ver:02d}/FullLabels/{split}_{idx}.npy"
         return path
 
     def read_image(self, idx, split):

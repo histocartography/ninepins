@@ -23,7 +23,7 @@ from torch.autograd import Variable
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 1, 2, 1]):
+    def __init__(self, weights=[1, 1, 1, 2, 1]):
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
 #         self.weights = self.weights / sum(self.weights)
@@ -75,24 +75,27 @@ class CustomLoss(nn.Module):
     def forward(self, preds, gts, prefix=None, mode='single'):
         # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
-        gt_seg, gt_hv = torch.split(gts[..., :3], [1, 2], dim=-1)
-        pred_seg, pred_hv = torch.split(preds, [1, 2], dim=-1)
+        gt_seg, gt_hv, gt_dot = torch.split(gts[..., :4], [1, 2, 1], dim=-1)
+        pred_seg, pred_hv, pred_dot = torch.split(preds, [1, 2, 1], dim=-1)
+
         # binary cross entropy loss
-        # print('loss', preds.shape, gts.shape)
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
+        # masked binary cross entropy loss
+        mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) + F.binary_cross_entropy(pred_dot, gt_dot)
+        # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
         # dice loss
         dice = self.dice_loss(pred_seg, gt_seg)
-        # mean square error of distance maps
+        # mean square error of distance maps and their gradients
         mse = F.mse_loss(pred_hv, gt_hv)
         msge = self.msge_loss(pred_hv, gt_hv, gt_seg)
         
-        loss = bce * self.weights[0] + dice * self.weights[1] + mse * self.weights[2] + msge * self.weights[3] 
+        loss = bce * self.weights[0] + mbce * self.weights[1] + dice * self.weights[2] + mse * self.weights[3] + msge * self.weights[4] 
 
         if mode == 'single':
             return loss
         
-        names = ['loss', 'bce', 'dice', 'mse', 'msge']
-        losses = [loss, bce, dice, mse, msge]
+        names = ['loss', 'bce', 'mbce', 'dice', 'mse', 'msge']
+        losses = [loss, bce, mbce, dice, mse, msge]
         if prefix is not None:
             names = ['{}_{}'.format(prefix, n) for n in names]
         return {name: loss for name, loss in zip(names, losses)}
@@ -249,11 +252,11 @@ class Net(nn.Module):
         self.encoder = Encoder(PreActResBlock, [3, 4, 6, 3])
         self.conv_bot = nn.Conv2d(2048, 1024, kernel_size=1, stride=1, padding=0, bias=False)
         self.decoder_seg = Decoder(Dense_block, [8, 4])
-        # self.decoder_cls = Decoder(Dense_block, [8, 4])
+        self.decoder_dot = Decoder(Dense_block, [8, 4])
         self.decoder_hov = Decoder(Dense_block, [8, 4])
         self.BatchNorm = nn.BatchNorm2d(64)
-        # self.conv_cls = nn.Conv2d(64, 5, kernel_size = 1, stride=1, padding=0, bias=True)
         self.conv_seg = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
+        self.conv_dot = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
         self.conv_hov = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
         self.softmax = nn.Softmax(dim=-1)
 
@@ -280,6 +283,15 @@ class Net(nn.Module):
         pred_seg = soft_seg[..., 1]
         pred_seg = torch.unsqueeze(pred_seg, -1)
 
+        # detection branch (dot)
+        dot_decodeds = self.decoder_dot(encodeds)
+        dot_pred = F.relu(self.BatchNorm(dot_decodeds[-1]))
+
+        logi_dot = self.conv_dot(dot_pred).permute(0, 2, 3, 1)
+        soft_dot = self.softmax(logi_dot)
+        pred_dot = soft_dot[..., 1]
+        pred_dot = torch.unsqueeze(pred_dot, -1)
+
         # HoVer Branch
         hov_decodeds = self.decoder_hov(encodeds)
         hov_pred = F.relu(self.BatchNorm(hov_decodeds[-1]))
@@ -287,8 +299,24 @@ class Net(nn.Module):
         logi_hov = self.conv_hov(hov_pred).permute(0, 2, 3, 1)
         pred_hov = logi_hov # legacy of transfered from tensorflow, can be removed 
 
-        predmap_coded = torch.cat((pred_seg, pred_hov), -1)
+        predmap_coded = torch.cat((pred_seg, pred_hov, pred_dot), -1)
         return predmap_coded
+
+    def load_model(self, ckpt, prefix='model.'):
+        """
+        Remove key difference caused by CusBrontes class.
+        
+        Args:
+            state_dict (dict): state dict in checkpoint
+            prefix (str): extra prefix to be removed from keys
+        """
+        from collections import OrderedDict
+        new_dict = OrderedDict()
+        len_ = len(prefix)
+        for key, value in ckpt['state_dict'].items():
+            new_key = key[len_:]
+            new_dict[new_key] = value
+        self.load_state_dict(new_dict)
 
     # def one_hot(self, indices, depth):
     #     """
