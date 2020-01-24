@@ -304,7 +304,7 @@ class Net(nn.Module):
 
     def load_model(self, ckpt, prefix='model.'):
         """
-        Remove key difference caused by CusBrontes class.
+        Load checkpoint and remove key difference caused by CusBrontes class.
         
         Args:
             state_dict (dict): state dict in checkpoint
