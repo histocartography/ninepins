@@ -85,7 +85,7 @@ parser.add_argument(
 parser.add_argument(
     '--v2',
     type=bool,
-    help='whether to use v2 (data-dependent threshold)',
+    help='whether to use v2 (dot refinement)',
     default=False,
     required=False
 )
@@ -125,10 +125,9 @@ def main(arguments):
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
-        if V2:
-            output_map = get_instance_output_v2(IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, ckpt=CKPT)
-        else:
-            output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=DIS_THRESHOLD, ckpt=CKPT)
+        output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
+                                        h=SEG_THRESHOLD, k=DIS_THRESHOLD,
+                                        ckpt=CKPT, dot_refinement=V2)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
