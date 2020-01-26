@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from scipy.ndimage.filters import maximum_filter, median_filter
 from scipy.ndimage.morphology import binary_fill_holes
-from skimage.color import label2rgb
+from skimage.color import label2rgb, rgb2hed
 from skimage.filters import gaussian, sobel_h, sobel_v
 from skimage.io import imread, imsave
 from skimage.morphology import *
@@ -124,7 +124,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     return res
 
-def _refine_instance_output(instance_map, point_pred, h=DEFAULT_H):
+def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong_discard=False):
     """
     # *******         ********               *******                 
     # *11111*         *333333*               *11111*                 
@@ -139,6 +139,8 @@ def _refine_instance_output(instance_map, point_pred, h=DEFAULT_H):
     #                                                *******         
     #                                                                
     """
+    hed = rgb2hed(image)
+    diff = hed[..., 0] - hed[..., 1]
     point_pred = point_pred > h
     point_pred = label(point_pred)
     point_mask = get_point_from_instance(point_pred, ignore_size=0)
@@ -152,7 +154,14 @@ def _refine_instance_output(instance_map, point_pred, h=DEFAULT_H):
             point_hit[point - 1] = True
         num_of_overlaps = len(overlapped_points)
         if num_of_overlaps == 0:
-            instance_map[instance_map == instance_idx] = 0
+            # instance_map[instance_map == instance_idx] = 0
+            # test if mean of (H - E) < -0.7
+            # if so, discard it
+            if strong_discard:
+                if diff[instance_map == instance_idx].mean() < -0.7:
+                    instance_map[instance_map == instance_idx] = 0
+            else:
+                instance_map[instance_map == instance_idx] = 0
         elif num_of_overlaps > 1:
             seg = instance_map == instance_idx
             new_seg = watershed(seg, markers=point_mask * seg, mask=seg)
@@ -168,7 +177,7 @@ def _refine_instance_output(instance_map, point_pred, h=DEFAULT_H):
     instance_map = label(instance_map)
     return instance_map
 
-def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refinement=False, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refinement=False, strong_discard=False, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -189,8 +198,9 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refineme
         outputs = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
+    image = get_original_image_from_file(*args, **kwargs)
     instance_map =  _get_instance_output(*outputs[:3], h=h, k=k)
-    return _refine_instance_output(instance_map, outputs[-1], h=h) if dot_refinement else instance_map
+    return _refine_instance_output(image, instance_map, outputs[-1], h=h, strong_discard=strong_discard) if dot_refinement else instance_map
 
 def get_output_from_file(idx,
                         read_dot=False,
