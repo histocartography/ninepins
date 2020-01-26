@@ -449,7 +449,7 @@ def nucleuswise_point_stats(output_map, label):
 
     TP_pred = np.count_nonzero(hit)
 
-    FN = len(FP_list)
+    FN = len(FN_list)
     FP = len(FP_list)
 
     Precision = TP_pred / len(hit)
