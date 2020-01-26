@@ -114,7 +114,8 @@ def main(arguments):
     # create aliases
     SPLIT = arguments.split
     IN_PATH = arguments.inference_path
-    DATASET_PATH = arguments.dataset_path
+    DATASET_ROOT = arguments.dataset_root
+    DATASET = arguments.dataset
     SEG_THRESHOLD = arguments.segmentation_threshold
     IDX = arguments.index
     RANGE = arguments.range

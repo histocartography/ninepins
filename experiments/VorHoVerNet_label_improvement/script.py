@@ -113,7 +113,8 @@ def main(arguments):
     SPLIT = arguments.split
     OUT_PATH = arguments.output_path
     IN_PATH = arguments.inference_path
-    DATASET_PATH = arguments.dataset_path
+    DATASET_ROOT = arguments.dataset_root
+    DATASET = arguments.dataset
     PREFIX = arguments.prefix
     METHOD = arguments.method
     NO_IMPROVE = arguments.no_improve
