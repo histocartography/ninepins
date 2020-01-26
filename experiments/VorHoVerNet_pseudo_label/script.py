@@ -15,10 +15,8 @@ from skimage.morphology import label as cc
 from histocartography.image.VorHoVerNet.metrics import score
 from histocartography.image.VorHoVerNet.utils import draw_boundaries, get_point_from_instance
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
-# from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 from histocartography.image.VorHoVerNet.performance import OutTime
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
-# import histocartography.image.VorHoVerNet.color_label as color_label
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)

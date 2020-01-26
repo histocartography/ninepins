@@ -10,7 +10,7 @@ import os
 import mlflow
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
-from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
+import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -48,12 +48,29 @@ parser.add_argument(
     default='../../histocartography/image/VorHoVerNet/inference',
     required=False
 )
+# parser.add_argument(
+#     '-d',
+#     '--dataset-path',
+#     type=str,
+#     help='dataset path.',
+#     default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+#     required=False
+# )
+parser.add_argument(
+    '-r',
+    '--dataset-root',
+    type=str,
+    help='root directory containing datasets',
+    default='../../histocartography/image/VorHoVerNet/',
+    required=False
+)
 parser.add_argument(
     '-d',
-    '--dataset-path',
+    '--dataset',
     type=str,
-    help='dataset path.',
-    default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+    help='dataset ([CoNSeP, MoNuSeg])',
+    default='CoNSeP',
+    choices=['CoNSeP', 'MoNuSeg'],
     required=False
 )
 parser.add_argument(
@@ -92,7 +109,8 @@ def main(arguments):
     except:
         log.error('Invalid range')
 
-    dataset = CoNSeP(download=False, root=DATASET_PATH)
+    # dataset = CoNSeP(download=False, root=DATASET_PATH)
+    dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
     metrics = VALID_METRICS.keys()
 
