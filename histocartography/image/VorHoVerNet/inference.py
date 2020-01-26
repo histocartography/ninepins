@@ -170,7 +170,8 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 if __name__ == '__main__':
     # load model
     SPLIT = 'test'
-    model_name = 'model_01_ckpt_epoch_11.ckpt'
+    # model_name = 'model_01_ckpt_epoch_11.ckpt'
+    model_name = 'model_02_ckpt_epoch_29.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
     model = Net()
@@ -179,7 +180,7 @@ if __name__ == '__main__':
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='MoNuSeg/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
