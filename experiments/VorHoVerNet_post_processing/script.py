@@ -9,7 +9,7 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
 from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
@@ -128,6 +128,9 @@ def main(arguments):
         output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
                                         h=SEG_THRESHOLD, k=DIS_THRESHOLD,
                                         ckpt=CKPT, dot_refinement=V2)
+        if V2:
+            seg, hor, vet, dot = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
+                                        ckpt=CKPT, read_dot=True)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
@@ -144,7 +147,7 @@ def main(arguments):
         point_mask = dataset.read_points(IDX, SPLIT)
         s = score(output_map, label, *metrics)
 
-        for img, p in zip(mark_nuclei(ori, output_map, label, s['nucleuswise_point']), [out_b_img, out_p_img, out_l_img]):
+        for img, p in zip(mark_nuclei(ori, output_map, label, stats=s['nucleuswise_point'], dot_pred=dot if V2 else None), [out_b_img, out_p_img, out_l_img]):
             img[point_mask] = [255, 255, 0]
             imsave(p, img)
             mlflow.log_artifact(p)

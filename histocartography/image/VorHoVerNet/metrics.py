@@ -554,7 +554,7 @@ def run(prefix, metrics):
         s = score(output_map, label, metrics)
         print(s[metrics])
 
-def mark_nuclei(image_, output_map, label, stats=None):
+def mark_nuclei(image_, output_map, label, stats=None, dot_pred=None):
     if stats is None:
         stats = nucleuswise_stats(output_map, label)
     TP_list = stats['TP_list']
@@ -583,6 +583,8 @@ def mark_nuclei(image_, output_map, label, stats=None):
     p_image = image_.copy()
     p_image[TP_pred_boundaries] = [0, 255, 0]
     p_image[FP_boundaries] = [255, 0, 0]
+    if dot_pred is not None:
+        p_image[dot_pred > 0.5] = [0, 0, 255]
 
     # label
     l_image = image_.copy()
