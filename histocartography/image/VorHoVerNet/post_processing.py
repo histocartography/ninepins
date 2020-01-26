@@ -380,7 +380,7 @@ def get_original_image_from_file(idx,
 
         return img[:ih, :iw, ...]
 
-def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_hor, pred_vet, h=DEFAULT_H, method='Voronoi'):
+def improve_pseudo_labels(image, current_seg_mask, point_mask, preds, h=DEFAULT_H, k=DEFAULT_K, method='Voronoi', strong_discard=False):
     """
     Improve the pseudo labels with current pseudo labels and model output.
     Args:
@@ -398,6 +398,7 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_hor, pred
                 Can be further used in distance_maps.get_distancemaps with use_full_mask set to True.
     """
     """initialization"""
+    pred_seg, pred_hor, pred_vet = preds[:3]
     pred_seg = pred_seg > h
     pred_seg = Cascade() \
                 .append(remove_small_objects, min_size=5) \
@@ -433,7 +434,10 @@ def improve_pseudo_labels(current_seg_mask, point_mask, pred_seg, pred_hor, pred
         new_seg = np.zeros_like(pred_seg).astype(int)
         # new_seg_curr = np.zeros_like(pred_seg).astype(int)
         # new_seg_pred = new_seg_curr.copy()
-        labeled_pred_seg = _get_instance_output(pred_seg, pred_hor, pred_vet)
+        labeled_pred_seg = _get_instance_output(pred_seg, pred_hor, pred_vet, h=h, k=k)
+        if len(preds) == 4:
+            pred_dot = preds[-1]
+            labeled_pred_seg = _refine_instance_output(image, labeled_pred_seg, pred_dot, h=h, strong_discard=strong_discard)
         labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
         point_label = label(point_mask)
         MAX_POINT_IDX = int(point_label.max())
