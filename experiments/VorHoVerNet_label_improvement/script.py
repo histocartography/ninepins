@@ -196,7 +196,7 @@ def main(arguments):
         label, _ = dataset.read_labels(IDX, SPLIT)        
         s = score(new_cell, label, *metrics)
 
-        for img, p in zip(mark_nuclei(ori, new_cell, label, stats=s['nucleuswise_point'], dot_pred=dot if V2 else None), [out_b_img, out_p_img, out_l_img]):
+        for img, p in zip(mark_nuclei(ori, new_cell, label, stats=s['nucleuswise_point'], dot_pred=preds[-1] if V2 and (not NO_IMPROVE) else None), [out_b_img, out_p_img, out_l_img]):
             img[point_mask] = [255, 255, 0]
             imsave(p, img)
             mlflow.log_artifact(p)
