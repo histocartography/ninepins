@@ -124,7 +124,7 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     return res
 
-def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong_discard=False):
+def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong_discard=False, extra_watershed=True):
     """
     # *******         ********               *******                 
     # *11111*         *333333*               *11111*                 
@@ -163,12 +163,13 @@ def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong
             else:
                 instance_map[instance_map == instance_idx] = 0
         elif num_of_overlaps > 1:
-            seg = instance_map == instance_idx
-            new_seg = watershed(seg, markers=point_mask * seg, mask=seg)
-            step = new_seg.max()
-            new_seg[new_seg > 0] += base
-            base += step
-            instance_map[seg] = new_seg[seg]
+            if extra_watershed:
+                seg = instance_map == instance_idx
+                new_seg = watershed(seg, markers=point_mask * seg, mask=seg)
+                step = new_seg.max()
+                new_seg[new_seg > 0] += base
+                base += step
+                instance_map[seg] = new_seg[seg]
     miss_points = [(i+1) for i, hit in enumerate(point_hit) if not hit]
     miss_point_mask = point_pred * np.isin(point_pred, miss_points)
     miss_point_mask = label(miss_point_mask)
@@ -177,7 +178,7 @@ def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong
     instance_map = label(instance_map)
     return instance_map
 
-def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refinement=False, strong_discard=False, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refinement=False, strong_discard=False, extra_watershed=True, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -200,7 +201,7 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refineme
 
     image = get_original_image_from_file(*args, **kwargs)
     instance_map =  _get_instance_output(*outputs[:3], h=h, k=k)
-    return _refine_instance_output(image, instance_map, outputs[-1], h=h, strong_discard=strong_discard) if dot_refinement else instance_map
+    return _refine_instance_output(image, instance_map, outputs[-1], h=h, strong_discard=strong_discard, extra_watershed=extra_watershed) if dot_refinement else instance_map
 
 def get_output_from_file(idx,
                         read_dot=False,

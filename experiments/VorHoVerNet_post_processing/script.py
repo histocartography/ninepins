@@ -115,10 +115,17 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '--strong_discard',
+    '--strong-discard',
     type=bool,
     help='whether to use strong criteria when discarding FP',
     default=False,
+    required=False
+)
+parser.add_argument(
+    '--extra-watershed',
+    type=bool,
+    help='whether to do extra watershed when a predicted nucleus covers multiple points',
+    default=True,
     required=False
 )
 
@@ -140,6 +147,7 @@ def main(arguments):
     V2 = arguments.v2
     CKPT = arguments.ckpt_filename
     STRONG_DISCARD = arguments.strong_discard
+    EXTRA_WATERSHED = arguments.extra_watershed
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
@@ -154,7 +162,8 @@ def main(arguments):
         ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
         output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
                                         h=SEG_THRESHOLD, k=DIS_THRESHOLD,
-                                        ckpt=CKPT, dot_refinement=V2, strong_discard=STRONG_DISCARD)
+                                        ckpt=CKPT, dot_refinement=V2, 
+                                        strong_discard=STRONG_DISCARD, extra_watershed=EXTRA_WATERSHED)
         if V2:
             seg, hor, vet, dot = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
                                         ckpt=CKPT, read_dot=True)

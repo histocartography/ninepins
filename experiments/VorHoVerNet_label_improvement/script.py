@@ -126,7 +126,7 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '--strong_discard',
+    '--strong-discard',
     type=bool,
     help='whether to use strong criteria when discarding FP',
     default=False,
