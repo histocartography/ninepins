@@ -57,7 +57,7 @@ parser.add_argument(
 #     required=False
 # )
 parser.add_argument(
-    '-r',
+    '-t',
     '--dataset-root',
     type=str,
     help='root directory containing datasets',
@@ -89,6 +89,21 @@ parser.add_argument(
     default='1:2:21',
     required=False
 )
+parser.add_argument(
+    '--v2',
+    type=bool,
+    help='whether to use v2 (dot refinement)',
+    default=False,
+    required=False
+)
+parser.add_argument(
+    '-c',
+    '--ckpt-filename',
+    type=str,
+    help='filename of the checkpoint.',
+    default='model_009_ckpt_epoch_18',
+    required=False
+)
 
 def main(arguments):
     """
@@ -103,9 +118,12 @@ def main(arguments):
     SEG_THRESHOLD = arguments.segmentation_threshold
     IDX = arguments.index
     RANGE = arguments.range
+    V2 = arguments.v2
+    CKPT = arguments.ckpt_filename
 
     try:
         st, ed, num = map(float, RANGE.split(':'))
+        num = int(num)
     except:
         log.error('Invalid range')
 
@@ -120,7 +138,10 @@ def main(arguments):
     for step, k in enumerate(np.linspace(st, ed, num)):
         thresholds.append(k)
         mlflow.log_metric('threshold', k, step=step)
-        output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=k)
+        output_map = get_instance_output(True, IDX, 
+                                        root=IN_PATH, split=SPLIT, 
+                                        h=SEG_THRESHOLD, k=k, 
+                                        ckpt=CKPT, dot_refinement=V2)
         label, _ = dataset.read_labels(IDX, SPLIT)
         s = score(output_map, label, *metrics)
         for metric in metrics:
@@ -142,7 +163,7 @@ def main(arguments):
     for metric, score_list in aggregated_metrics.items():
         mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
 
-    mlflow.log_metric("best_threshold", thresholds[np.argmax(aggregated_metrics['DICE2'])])
+    mlflow.log_metric("best_threshold", thresholds[np.argmax(aggregated_metrics['DQ_point'])])
 
 
 if __name__ == "__main__":
