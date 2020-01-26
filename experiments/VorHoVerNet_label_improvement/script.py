@@ -179,7 +179,7 @@ def main(arguments):
             new_cell = current_seg_mask & ~edges
             new_cell = cc(new_cell)
         else:
-            preds = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT, read_dot=V2)
+            preds = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT, ckpt=CKPT, read_dot=V2)
             _, new_cell = improve_pseudo_labels(ori, current_seg_mask, point_mask, preds, method=METHOD, k=DIS_THRESHOLD, strong_discard=STRONG_DISCARD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
