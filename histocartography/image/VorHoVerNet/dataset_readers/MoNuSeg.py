@@ -48,8 +48,9 @@ class MoNuSeg_local(MoNuSeg_common):
     """
     Dataset wrapper class for reading images and labels from local MoNuSeg dataset.
     """
-    def __init__(self, itr=0, root="MoNuSeg/"):
+    def __init__(self, ver=0, itr=0, root="MoNuSeg/"):
         self.root = root
+        self.ver = ver
         self.itr = itr
 
     def get_path(self, idx, split, type_, itr=None):
@@ -66,8 +67,10 @@ class MoNuSeg_local(MoNuSeg_common):
             path += f"{split.capitalize()}/Images/{split}_{uid}.png"
         elif type_ == "label":
             path += f"{split.capitalize()}/Labels/{split}_{uid}.npy"
-        else:
-            path += f"{split.capitalize()}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
+        elif type_ == "pseudo":
+            path += f"{split.capitalize()}/version_{self.ver:02d}/PseudoLabels_{itr:02d}/{split}_{idx}.npy"
+        elif type_ == "full":
+            path += f"{split.capitalize()}/version_{self.ver:02d}/FullLabels/{split}_{idx}.npy"
         return path
 
     def read_image(self, idx, split):
