@@ -231,7 +231,7 @@ def main(args):
     from pytorch_lightning.callbacks import ModelCheckpoint
     checkpoint_callback = ModelCheckpoint(
         filepath=f'{OUTPUT_ROOT}/checkpoints/{MODEL_NAME}',
-        save_top_k=1,
+        save_top_k=3,
         verbose=VERBOSE,
         monitor=EARLY_STOP_MONITOR,
         mode='min',
@@ -270,7 +270,7 @@ def main(args):
         MODEL_NAME += '_ki'
     
     # log artifacts
-    cbrontes_model.log_via_mlflow()
+    cbrontes_model.log_artifacts()
 
     # # save model
     # SAVER_PATH = 'saver_pl/'

@@ -6,9 +6,9 @@ entry_points:
   main:
     parameters:
       model_name: {type: string, default: model_default}
-      output_root: {type: string, default: ./}
+      output_root: {type: string, default: ./outputs}
       batch_size: {type: int, default: 8}
-      data_path: {type: string, default: ./data/}
+      data_path: {type: string, default: ./}
       dataset: {type: string, default: CoNSeP/}
       iteration: {type: int, default: 0}
       version: {type: int, default: 0}

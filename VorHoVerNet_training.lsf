@@ -1,5 +1,5 @@
 #BSUB -q prod.short
-#BSUB -n 1
+#BSUB -n 4
 #BSUB -J "VorHoVerNet"
 #BSUB -e "/u/hun/logs/VHV_log.%J.stderr"
 #BSUB -o "/u/hun/logs/VHV_log.%J.stdout"
@@ -7,7 +7,7 @@
 # Time stamp
 time_stamp=$(date +"%Y%m%d%H%M%S")
 
-module load Anaconda3/2019.03-rhel-7
+# module load Anaconda3/2019.03-rhel-7
 
 # Training & validation
 # TODO: modify for our case

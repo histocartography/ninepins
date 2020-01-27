@@ -90,10 +90,6 @@ class CusBrontes(Brontes):
             os.makedirs(self.figpath, exist_ok=True)
             print('\tinference image dir: {}'.format(self.figpath))
 
-            # reminders
-            # if self.num_gpus > 1:
-            #     print("It is better to pass num_gpus if it is greater than 1 with visualize set to True.")
-
     def inference(self, gap=None, psize=270, vsize=80):
         """
         """
@@ -208,14 +204,6 @@ class CusBrontes(Brontes):
             # check if training started
             if self.current_epoch == self.start_epoch and not self.training_started:
                 self.training_started == True
-                # if self.rints[0] is None:
-                    # self.rints[0] = random.randint(0, (self.num_patches[0]*self.train_percent_check)/(img.shape[0] * self.num_gpus))
-                    # self.rints[0] = 1
-                # if idx == self.rints[0]:
-                #     print(self.rints[0])
-                #     print(type(batch[0]), self.num_gpus)
-                #     self.inf_batch_train = batch if self.num_gpus == 1 else batch[0].clone().detach()
-                #     print(type(self.inf_batch_train))
         return training_dict
 
     def validation_step(self, batch, idx):
@@ -229,16 +217,6 @@ class CusBrontes(Brontes):
             validation_dict, step=self.validation_step_count
         )
         self.validation_step_count += 1
-
-        # prepare for inference
-        # if self.visualize and self.current_epoch == self.start_epoch:
-            # if self.rints[1] is None:
-                # self.rints[1] = random.randint(0, (self.num_patches[1]*self.val_percent_check)//(img.shape[0] * self.num_gpus))
-                # self.rints[1] = 10
-            # if idx == self.rints[1]:
-            # if idx == 1:
-            #     self.inf_batch_valid = batch if self.num_gpus == 1 else batch[0].detach()
-                # self.inf_batch_valid = batch.detach() if self.num_gpus == 1 else torch.stack([b[i, ...] for b in batch])
         return validation_dict
 
     def validation_end(self, outputs):
