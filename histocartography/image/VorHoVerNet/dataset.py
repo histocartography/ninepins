@@ -1,8 +1,9 @@
 import os
+import torch
 import numpy as np
 from skimage.io import imread, imsave
 from skimage.morphology import binary_dilation, disk, label
-from torch.utils.data import Dataset
+# from torch.utils.data import Dataset
 from histocartography.image.VorHoVerNet.dataset_reader import *
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
@@ -211,7 +212,19 @@ def data_reader(root=None, split='train', channel_first=True, ver=0, itr=0, dofl
     print('')
     return images, labels
 
-class AugmentedDataset(Dataset):
+def dataset_numpy_to_tensor(dataset, batch_size=8):
+    imgs, gts = [], []
+    for i in range(batch_size):
+        img, gt = dataset[i]
+        imgs.append(img)
+        gts.append(gt)
+    new_imgs = np.stack(imgs, axis=0)
+    new_gts = np.stack(gts, axis=0)
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    return torch.from_numpy(new_imgs).to(device), torch.from_numpy(new_gts).to(device)
+
+
+class AugmentedDataset(torch.utils.data.Dataset):
     """
     Apply augmentation on the input dataset according to transform and target transform.
 
@@ -268,7 +281,7 @@ class AugmentedDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-class CoNSeP_cropped(Dataset):
+class CoNSeP_cropped(torch.utils.data.Dataset):
     """
     Read dataset and crop images and labels to certain size.
     """
