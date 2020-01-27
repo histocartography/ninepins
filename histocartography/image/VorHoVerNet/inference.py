@@ -113,7 +113,7 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
     
     os.makedirs('./inference/{}/{}'.format(figpath_fix, split), exist_ok=True)
 
-    subs = ["seg", "dist1", "dist2"]
+    subs = ["seg", "dist1", "dist2", "dot"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
@@ -145,27 +145,33 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         gt0 = shift_and_scale(gt[..., 0], 255, 0).astype(np.uint8)
         gt1 = shift_and_scale(gt[..., 1], 255, 0).astype(np.uint8)
         gt2 = shift_and_scale(gt[..., 2], 255, 0).astype(np.uint8)
+        gt3 = shift_and_scale(gt[..., 3], 255, 0).astype(np.uint8)
 
         imsave(filename.format("seg_gt"), gt0)
         imsave(filename.format("dist1_gt"), gt1)
         imsave(filename.format("dist2_gt"), gt2)
+        imsave(filename.format("dot_gt"), gt3)
         ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
         imsave(filename.format("ori"), ori)
         pred0 = shift_and_scale(pred[..., 0], 255, 0).astype(np.uint8)
         pred1 = shift_and_scale(pred[..., 1], 255, 0).astype(np.uint8)
         pred2 = shift_and_scale(pred[..., 2], 255, 0).astype(np.uint8)
+        pred3 = shift_and_scale(pred[..., 3], 255, 0).astype(np.uint8)
 
         imsave(filename.format("seg"), pred0)
         imsave(filename.format("dist1"), pred1)
         imsave(filename.format("dist2"), pred2)
+        imsave(filename.format("dot"), pred3)
         np.save(filename_npy.format("seg"), pred[..., 0])
         np.save(filename_npy.format("dist1"), pred[..., 1])
         np.save(filename_npy.format("dist2"), pred[..., 2])
+        np.save(filename_npy.format("dot"), pred[..., 3])
 
 if __name__ == '__main__':
     # load model
     SPLIT = 'test'
-    model_name = 'model_01_ckpt_epoch_11.ckpt'
+    # model_name = 'model_01_ckpt_epoch_11.ckpt'
+    model_name = 'model_02_ckpt_epoch_29.ckpt'
     checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
     model = Net()
@@ -174,9 +180,9 @@ if __name__ == '__main__':
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='CoNSeP/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(root='MoNuSeg/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
-    # inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2])
-    inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2], split=SPLIT)
+    # inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
