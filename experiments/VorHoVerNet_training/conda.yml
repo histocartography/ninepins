@@ -1,0 +1,16 @@
+name: VorHoVerNet
+dependencies:
+  - python>=3.6
+  - pytorch
+  - pip
+  - pip:
+    - torchvision
+    - mlflow>=1.2.0
+    - minio
+    - matplotlib
+    - opencv-python
+    - scikit-image
+    - scikit-learn
+    - scipy
+    # while in experiments
+    - -e ../..

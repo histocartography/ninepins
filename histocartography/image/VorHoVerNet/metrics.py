@@ -449,7 +449,7 @@ def nucleuswise_point_stats(output_map, label):
 
     TP_pred = np.count_nonzero(hit)
 
-    FN = len(FP_list)
+    FN = len(FN_list)
     FP = len(FP_list)
 
     Precision = TP_pred / len(hit)
@@ -540,6 +540,60 @@ def score(output_map, label, *metrics):
     
     return res
 
+def dot_pred_stats(dot_pred, label):
+    # label = get_point_from_instance(label)
+    # output_map = output_map.copy()
+    dot_pred = cc(dot_pred)
+    dot_pred = get_point_from_instance(dot_pred, ignore_size=0)
+    label = label.copy().astype(int)
+    for idx in range(1, int(label.max()) + 1):
+        if np.count_nonzero(label == idx) < 10:
+            label[label == idx] = 0
+            label[label > idx] -= 1
+
+    MAX_DOT_IDX = int(dot_pred.max())
+    TP = 0
+    hit = [False] * int(label.max())
+    FP_list = []
+    TP_pred_list = []
+
+    for idx in range(1, MAX_DOT_IDX + 1):
+        covered_lbl_idx = label[dot_pred == idx][0]
+
+        if covered_lbl_idx != 0:
+            TP += 1
+            hit[covered_lbl_idx - 1] = True
+            label[label == covered_lbl_idx] = 0
+            TP_pred_list.append(idx)
+        else:
+            FP_list.append(idx)
+
+    FN_list = []
+    TP_list = []
+    for i, hit_ in enumerate(hit):
+        if hit_:
+            TP_list.append(i+1)
+        else:
+            FN_list.append(i+1)
+
+    FN = len(FN_list)
+    FP = len(FP_list)
+
+    Precision = TP / MAX_DOT_IDX
+    Sensitivity = TP / len(hit)
+
+    return {
+        'TP': TP,
+        'FP': FP,
+        'FN': FN,
+        'TP_list': TP_list,
+        'TP_pred_list': TP_pred_list,
+        'FP_list': FP_list,
+        'FN_list': FN_list,
+        'Precision': Precision,
+        'Sensitivity': Sensitivity
+    }
+
 def run(prefix, metrics):
     for IDX in range(1, 15):
         output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
@@ -554,7 +608,7 @@ def run(prefix, metrics):
         s = score(output_map, label, metrics)
         print(s[metrics])
 
-def mark_nuclei(image_, output_map, label, stats=None):
+def mark_nuclei(image_, output_map, label, stats=None, dot_pred=None):
     if stats is None:
         stats = nucleuswise_stats(output_map, label)
     TP_list = stats['TP_list']
@@ -583,6 +637,8 @@ def mark_nuclei(image_, output_map, label, stats=None):
     p_image = image_.copy()
     p_image[TP_pred_boundaries] = [0, 255, 0]
     p_image[FP_boundaries] = [255, 0, 0]
+    if dot_pred is not None:
+        p_image[dot_pred > 0.5] = [0, 0, 255]
 
     # label
     l_image = image_.copy()
@@ -593,6 +649,8 @@ def mark_nuclei(image_, output_map, label, stats=None):
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
+    from histocartography.image.VorHoVerNet.post_processing import get_output_from_file
+
     IDX = 1
     prefix = 'mlflow_zeros'
     # prefix = 'curr_cell_new'
@@ -602,10 +660,12 @@ if __name__ == "__main__":
     
     # m = 'DICE2'
 
-    output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+    # output_map = np.load('output/{}_{}.npy'.format(prefix, IDX))
+    _, _, _, dot_pred = get_output_from_file(IDX, read_dot=True, ckpt='model_01_ckpt_epoch_11')
     label, _ = dataset.read_labels(IDX, 'test')
 
-    print(score(output_map, label, *VALID_METRICS.keys())['DQ_point'])
+    print(dot_pred_stats(dot_pred > 0.5, label))
+    # print(score(output_map, label, *VALID_METRICS.keys())['DQ_point'])
 
     # for metrics in ['DICE2', 'avgIOU', 'IOU', 'AJI']:
     # for metrics in ['DQ', 'SQ', 'PQ']:

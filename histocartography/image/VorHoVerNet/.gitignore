@@ -1,6 +1,7 @@
 # local dataset
 
 CoNSeP/*
+MoNuSeg/*
 savers_pl/*
 
 # training results
@@ -25,3 +26,4 @@ inference.py
 dataset_iter.py
 no_gpu_need.lsf
 train.sh
+.set_environment_variables

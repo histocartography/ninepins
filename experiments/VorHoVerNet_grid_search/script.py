@@ -10,7 +10,7 @@ import os
 import mlflow
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
-from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
+import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -48,12 +48,29 @@ parser.add_argument(
     default='../../histocartography/image/VorHoVerNet/inference',
     required=False
 )
+# parser.add_argument(
+#     '-d',
+#     '--dataset-path',
+#     type=str,
+#     help='dataset path.',
+#     default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+#     required=False
+# )
+parser.add_argument(
+    '-t',
+    '--dataset-root',
+    type=str,
+    help='root directory containing datasets',
+    default='../../histocartography/image/VorHoVerNet/',
+    required=False
+)
 parser.add_argument(
     '-d',
-    '--dataset-path',
+    '--dataset',
     type=str,
-    help='dataset path.',
-    default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+    help='dataset ([CoNSeP, MoNuSeg])',
+    default='CoNSeP',
+    choices=['CoNSeP', 'MoNuSeg'],
     required=False
 )
 parser.add_argument(
@@ -72,27 +89,47 @@ parser.add_argument(
     default='1:2:21',
     required=False
 )
+parser.add_argument(
+    '--v2',
+    type=bool,
+    help='whether to use v2 (dot refinement)',
+    default=False,
+    required=False
+)
+parser.add_argument(
+    '-c',
+    '--ckpt-filename',
+    type=str,
+    help='filename of the checkpoint.',
+    default='model_009_ckpt_epoch_18',
+    required=False
+)
 
 def main(arguments):
     """
-    Run post-processing on the split of dataset
+    Run grid search of post-processing threshold on the split of dataset
     Args:
         arguments (Namespace): parsed arguments.
     """
     # create aliases
     SPLIT = arguments.split
     IN_PATH = arguments.inference_path
-    DATASET_PATH = arguments.dataset_path
+    DATASET_ROOT = arguments.dataset_root
+    DATASET = arguments.dataset
     SEG_THRESHOLD = arguments.segmentation_threshold
     IDX = arguments.index
     RANGE = arguments.range
+    V2 = arguments.v2
+    CKPT = arguments.ckpt_filename
 
     try:
         st, ed, num = map(float, RANGE.split(':'))
+        num = int(num)
     except:
         log.error('Invalid range')
 
-    dataset = CoNSeP(download=False, root=DATASET_PATH)
+    # dataset = CoNSeP(download=False, root=DATASET_PATH)
+    dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
     metrics = VALID_METRICS.keys()
 
@@ -102,7 +139,10 @@ def main(arguments):
     for step, k in enumerate(np.linspace(st, ed, num)):
         thresholds.append(k)
         mlflow.log_metric('threshold', k, step=step)
-        output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT, h=SEG_THRESHOLD, k=k)
+        output_map = get_instance_output(True, IDX, 
+                                        root=IN_PATH, split=SPLIT, 
+                                        h=SEG_THRESHOLD, k=k, 
+                                        ckpt=CKPT, dot_refinement=V2)
         label, _ = dataset.read_labels(IDX, SPLIT)
         s = score(output_map, label, *metrics)
         for metric in metrics:
@@ -124,7 +164,7 @@ def main(arguments):
     for metric, score_list in aggregated_metrics.items():
         mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
 
-    mlflow.log_metric("best_threshold", thresholds[np.argmax(aggregated_metrics['DICE2'])])
+    mlflow.log_metric("best_threshold", thresholds[np.argmax(aggregated_metrics['DQ_point'])])
 
 
 if __name__ == "__main__":

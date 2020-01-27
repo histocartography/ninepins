@@ -116,7 +116,7 @@ def get_center(coords, mode="extrema"):
             center.append(int((M + m) / 2))
         return tuple(center)
     elif mode == "centroid":
-        return coords.sum(axis=0) / coords.shape[0]
+        return tuple((coords.sum(axis=0) / coords.shape[0]).astype(int))
     else:
         raise ValueError("Unknown mode")
 

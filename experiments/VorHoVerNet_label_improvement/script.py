@@ -10,11 +10,11 @@ import os
 import mlflow
 from skimage.io import imsave
 from skimage.morphology import label as cc, binary_dilation, disk
-from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM
+from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM, DEFAULT_K
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
-from histocartography.image.VorHoVerNet.dataset_reader import CoNSeP
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
+import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -53,12 +53,29 @@ parser.add_argument(
     default='../../histocartography/image/VorHoVerNet/inference',
     required=False
 )
+# parser.add_argument(
+#     '-d',
+#     '--dataset-path',
+#     type=str,
+#     help='dataset path.',
+#     default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+#     required=False
+# )
+parser.add_argument(
+    '-r',
+    '--dataset-root',
+    type=str,
+    help='root directory containing datasets',
+    default='../../histocartography/image/VorHoVerNet/',
+    required=False
+)
 parser.add_argument(
     '-d',
-    '--dataset-path',
+    '--dataset',
     type=str,
-    help='dataset path.',
-    default='../../histocartography/image/VorHoVerNet/CoNSeP/',
+    help='dataset ([CoNSeP, MoNuSeg])',
+    default='CoNSeP',
+    choices=['CoNSeP', 'MoNuSeg'],
     required=False
 )
 parser.add_argument(
@@ -85,10 +102,47 @@ parser.add_argument(
     default=False,
     required=False
 )
+parser.add_argument(
+    '-t',
+    '--distancemap-threshold',
+    type=float,
+    help='threshold for distance map prediction',
+    default=DEFAULT_K,
+    required=False
+)
+parser.add_argument(
+    '--v2',
+    type=bool,
+    help='whether to use v2 (dot refinement)',
+    default=False,
+    required=False
+)
+parser.add_argument(
+    '-c',
+    '--ckpt-filename',
+    type=str,
+    help='filename of the checkpoint.',
+    default='model_009_ckpt_epoch_18',
+    required=False
+)
+parser.add_argument(
+    '--strong-discard',
+    type=bool,
+    help='whether to use strong criteria when discarding FP',
+    default=False,
+    required=False
+)
+parser.add_argument(
+    '--pseudolabel-version',
+    type=int,
+    help='version of pseudo label',
+    default=1,
+    required=False
+)
 
 def main(arguments):
     """
-    Run post-processing on the split of dataset
+    Run label improvement on the split of dataset
     Args:
         arguments (Namespace): parsed arguments.
     """
@@ -96,21 +150,28 @@ def main(arguments):
     SPLIT = arguments.split
     OUT_PATH = arguments.output_path
     IN_PATH = arguments.inference_path
-    DATASET_PATH = arguments.dataset_path
+    DATASET_ROOT = arguments.dataset_root
+    DATASET = arguments.dataset
     PREFIX = arguments.prefix
     METHOD = arguments.method
     NO_IMPROVE = arguments.no_improve
+    DIS_THRESHOLD = arguments.distancemap_threshold
+    V2 = arguments.v2
+    CKPT = arguments.ckpt_filename
+    STRONG_DISCARD = arguments.strong_discard
+    VERSION = arguments.pseudolabel_version
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
-    dataset = CoNSeP(download=False, root=DATASET_PATH)
+    # dataset = CoNSeP(download=False, root=DATASET_PATH)
+    dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/", ver=VERSION)
 
     metrics = VALID_METRICS.keys()
 
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT)
+        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
         current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
         point_mask = dataset.read_points(IDX, SPLIT)
         if NO_IMPROVE:
@@ -118,8 +179,8 @@ def main(arguments):
             new_cell = current_seg_mask & ~edges
             new_cell = cc(new_cell)
         else:
-            seg, hor, vet = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT)
-            _, new_cell = improve_pseudo_labels(current_seg_mask, point_mask, seg, hor, vet, method=METHOD)
+            preds = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT, ckpt=CKPT, read_dot=V2)
+            _, new_cell = improve_pseudo_labels(ori, current_seg_mask, point_mask, preds, method=METHOD, k=DIS_THRESHOLD, strong_discard=STRONG_DISCARD)
         image = draw_label_boundaries(ori, new_cell.copy())
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
         out_npy = out_file_prefix + '.npy'
@@ -135,7 +196,8 @@ def main(arguments):
         label, _ = dataset.read_labels(IDX, SPLIT)        
         s = score(new_cell, label, *metrics)
 
-        for img, p in zip(mark_nuclei(ori, new_cell, label, s['nucleuswise']), [out_b_img, out_p_img, out_l_img]):
+        for img, p in zip(mark_nuclei(ori, new_cell, label, stats=s['nucleuswise_point'], dot_pred=preds[-1] if V2 and (not NO_IMPROVE) else None), [out_b_img, out_p_img, out_l_img]):
+            img[point_mask] = [255, 255, 0]
             imsave(p, img)
             mlflow.log_artifact(p)
 
