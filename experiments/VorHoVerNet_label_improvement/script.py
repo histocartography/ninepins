@@ -178,6 +178,11 @@ def main(arguments):
             edges = binary_dilation(get_voronoi_edges(point_mask) > 0, disk(1))
             new_cell = current_seg_mask & ~edges
             new_cell = cc(new_cell)
+            for seg_idx in np.unique(new_cell):
+                if seg_idx == 0: continue
+                if np.count_nonzero((new_cell == seg_idx) & point_mask) == 0:
+                    new_cell[new_cell == seg_idx] = 0
+            new_cell = cc(new_cell)
         else:
             preds = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT, ckpt=CKPT, read_dot=V2)
             _, new_cell = improve_pseudo_labels(ori, current_seg_mask, point_mask, preds, method=METHOD, k=DIS_THRESHOLD, strong_discard=STRONG_DISCARD)
