@@ -10,7 +10,7 @@ import os
 import mlflow
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei, dot_pred_stats
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
@@ -154,11 +154,10 @@ def main(arguments):
     # dataset = CoNSeP(download=False, root=DATASET_PATH)
     dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
-    metrics = VALID_METRICS.keys()
-
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
+        metrics = list(VALID_METRICS.keys())
         ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
         output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
                                         h=SEG_THRESHOLD, k=DIS_THRESHOLD,
@@ -182,6 +181,12 @@ def main(arguments):
         label, _ = dataset.read_labels(IDX, SPLIT)
         point_mask = dataset.read_points(IDX, SPLIT)
         s = score(output_map, label, *metrics)
+
+        if V2:
+            metrics += ['dot_pred', 'DQ_dot']
+            ss = dot_pred_stats(dot > 0.5, label)
+            s['dot_pred'] = ss
+            s['DQ_dot'] = ss['TP'] / (ss['TP'] + 0.5 * ss['FN'] + 0.5 * ss['FP'])
 
         for img, p in zip(mark_nuclei(ori, output_map, label, stats=s['nucleuswise_point'], dot_pred=dot if V2 else None), [out_b_img, out_p_img, out_l_img]):
             img[point_mask] = [255, 255, 0]
