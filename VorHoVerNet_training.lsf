@@ -33,6 +33,6 @@ export MLFLOW_EXPERIMENT_NAME=hun_VorHoVerNet_training
 echo "ready to run qqq"
 
 mlflow experiments create --artifact-location s3://mlflow -n ${MLFLOW_EXPERIMENT_NAME}
-mlflow run /u/hun/ninepins/experiments/VorHoVerNet_training -P model_name=$MODEL_NAME -P output_path=$OUTPUT_PATH -P batch_size=$BATCH_SIZE -P data_path=$DATA_PATH -P dataset=$DATASET -P version=$VERSION -P iteration=$ITERATION -P number_of_workers=$NUMBER_OF_WORKERS -P learning_rate=$LEARNING_RATE -P log_interval=$LOG_INTERVAL -P early_stop_monitor=$EARLY_STOP_MONITOR -P early_stop_patience=$EARLY_STOP_PATIENCE 
+mlflow run /u/hun/ninepins/experiments/VorHoVerNet_training -P model_name=$MODEL_NAME -P output_root=$OUTPUT_ROOT -P batch_size=$BATCH_SIZE -P data_path=$DATA_PATH -P dataset=$DATASET -P version=$VERSION -P iteration=$ITERATION -P number_of_workers=$NUMBER_OF_WORKERS -P learning_rate=$LEARNING_RATE -P log_interval=$LOG_INTERVAL -P early_stop_monitor=$EARLY_STOP_MONITOR -P early_stop_patience=$EARLY_STOP_PATIENCE 
 
 echo "job finished"

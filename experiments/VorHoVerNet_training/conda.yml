@@ -6,6 +6,8 @@ dependencies:
   - pip:
     - torchvision
     - mlflow>=1.2.0
+    - pytorch-lightning
+    - brontes
     - minio
     - matplotlib
     - opencv-python

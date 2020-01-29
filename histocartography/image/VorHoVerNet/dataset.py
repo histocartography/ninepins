@@ -172,8 +172,7 @@ def data_reader(root=None, split='train', channel_first=True, ver=0, itr=0, dofl
             images (numpy.ndarray)
             labels (numpy.ndarray)
     """
-    # data_reader = CoNSeP(root=root, download=False, ver=ver) if root is not None else CoNSeP(download=False, ver=ver)
-    data_reader = MoNuSeg(root=root, download=False, ver=ver)
+    data_reader = CoNSeP(root=root, download=False, ver=ver) if root is not None else CoNSeP(download=False, ver=ver)
     IDX_LIMITS = data_reader.IDX_LIMITS
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
@@ -208,6 +207,7 @@ def data_reader(root=None, split='train', channel_first=True, ver=0, itr=0, dofl
                 fulllabels_ = flip_image(fulllabels, flip, mode='dist')
                 fulllabels_ = padninvert(fulllabels_, pad_width=((0, 40), (0, 40), (0, 0)))
                 labels.append(np.concatenate((pseudolabels_, fulllabels_), axis=-1))
+                # labels.append(np.concatenate((fulllabels_, np.expand_dims(pseudolabels_[..., -1], axis=-1), fulllabels_), axis=-1))
             else:
                 labels.append(pseudolabels_)
     print('')

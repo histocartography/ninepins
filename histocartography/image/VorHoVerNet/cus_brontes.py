@@ -54,6 +54,7 @@ class CusBrontes(Brontes):
         """
         # new parameters
         self.lr_scheduler = lr_scheduler
+        self.training_log_interval = training_log_interval // num_gpus
         self.tracker_type = tracker_type
         self.inf_batches = inf_batches
         self.visualize = visualize
@@ -61,6 +62,8 @@ class CusBrontes(Brontes):
         self.output_root = output_root # for log_artifacts
         self.num_gpus = num_gpus
 
+        self.training_end_count = 0
+        # self.batchsize = self.inf_batches[0][0].shape[0]
         self.start_epoch = 0
         if self.tracker_type == 'mlflow':
             mlflow.log_param('start epoch', self.start_epoch + 1)
@@ -89,6 +92,10 @@ class CusBrontes(Brontes):
             self.figpath = f'{self.output_root}/visualize'
             os.makedirs(self.figpath, exist_ok=True)
             print('\tinference image dir: {}'.format(self.figpath))
+
+            # reminders
+            # if self.num_gpus > 1:
+            #     print("It is better to pass num_gpus if it is greater than 1 with visualize set to True.")
 
     def inference(self, gap=None, psize=270, vsize=80):
         """
@@ -170,13 +177,13 @@ class CusBrontes(Brontes):
         for d in full_dirs:
             mlflow.log_artifacts(d)
             print(f"Log artifacts from {d}.")
-        if 'checkpoints' in dirs:
-            mlflow.pytorch.log_model(self.model, "model", conda_env="conda.yml")
+        # if 'checkpoints' in dirs:
+        #     mlflow.log_model(self.model, "model", conda_env="conda.yml")
     
     def log_existing_model_info(self, dirname='checkpoints'):
         if self.tracker_type != 'mlflow': return
 
-        path = f'{self.output_root}/{dirname}/{model_name}'
+        path = f'{self.output_root}/{dirname}'
         if os.path.exists(path):
             filenames = [name for name in os.listdir(path) if name.endswith('.ckpt')]
             mlflow.log_param('existing models', ', '.join(filenames))
@@ -193,23 +200,40 @@ class CusBrontes(Brontes):
         for name, metric in self.metrics.items():
             training_dict[name] = metric(preds, gts)
         
-        if mode == "train":
+        # if mode == "train":
             # log info
-            if idx % self.training_log_interval == 0:
-                self.tracker.log_tensor_dict(
-                    training_dict, step=self.training_step_count
-                )
-            self.training_step_count += 1
-
-            # check if training started
-            if self.current_epoch == self.start_epoch and not self.training_started:
-                self.training_started == True
+#             print(idx, training_dict)
+#             if idx % self.training_log_interval == 0:
+#                 self.tracker.log_tensor_dict(
+#                     training_dict, step=self.training_step_count
+#                 )
+#             self.training_step_count += 1
         return training_dict
 
-    def validation_step(self, batch, idx):
-        img, gts = batch
-        preds = self.forward(img)
+    def training_end(self, outputs):
+        if self.num_gpus == 1:
+            return outputs
+        training_dict = {
+            f'{name}': value.mean() for name, value in outputs.items()
+        }
 
+        if self.training_end_count % self.training_log_interval == 0:
+            self.tracker.log_tensor_dict(
+                training_dict, step=self.training_step_count
+            )
+            self.training_step_count += 1
+        self.training_end_count += 1
+
+        if not self.training_started:
+            self.training_started = True
+
+        return training_dict
+        
+    
+    def validation_step(self, batch, idx):
+        # img, gts = batch
+        # preds = self.forward(img)
+        
         validation_dict = {
             f'val_{name}': value for name, value in self.training_step(batch, idx, mode='valid', contain='all').items()
         }
@@ -217,13 +241,26 @@ class CusBrontes(Brontes):
             validation_dict, step=self.validation_step_count
         )
         self.validation_step_count += 1
+
+        # prepare for inference
+        # if self.visualize and self.current_epoch == self.start_epoch:
+            # if self.rints[1] is None:
+                # self.rints[1] = random.randint(0, (self.num_patches[1]*self.val_percent_check)//(img.shape[0] * self.num_gpus))
+                # self.rints[1] = 10
+            # if idx == self.rints[1]:
+            # if idx == 1:
+            #     self.inf_batch_valid = batch if self.num_gpus == 1 else batch[0].detach()
+                # self.inf_batch_valid = batch.detach() if self.num_gpus == 1 else torch.stack([b[i, ...] for b in batch])
         return validation_dict
 
     def validation_end(self, outputs):
         names = ['val_loss'] + [f'val_{name}' for name in self.metrics.keys()]
+        # print('v', len(outputs), len(outputs[0]), outputs[0]['val_loss'].shape, torch.stack([x['val_loss'] for x in outputs]).shape)
         validation_end_dict = {
             f'avg_{name}': torch.stack([x[name] for x in outputs]).mean() for name in names
         }
+        # f'avg_{name}': torch.stack([x[name] for x in outputs]).mean() for name in names
+        # f'avg_{name}': torch.stack([x[name] for x in outputs if len(x) == (self.batchsize // self.num_gpus)]).mean() for name in names
         self.tracker.log_tensor_dict(
             validation_end_dict, step=self.validation_end_count
         )
@@ -234,7 +271,10 @@ class CusBrontes(Brontes):
             print(f'Epoch {self.current_epoch + 1}, avg_val_loss: {validation_end_dict["avg_val_loss"]:.4f}\t\t\t')
             if self.visualize:
                 # TODO: pass val_loss and show on figure
-                self.inference()
+                try: 
+                    self.inference()
+                except TypeError:
+                    print("asdsa")
 
         if self.tracker_type == 'mlflow':
             mlflow.log_param('finished epoch', self.current_epoch + 1)

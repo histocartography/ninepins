@@ -329,7 +329,7 @@ class Net(nn.Module):
             new_key = key[len_:]
             new_dict[new_key] = value
         self.load_state_dict(new_dict)
-
+        
     # def one_hot(self, indices, depth):
     #     """
     #     Returns a one-hot tensor.
