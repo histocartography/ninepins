@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
+from collections import deque
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
@@ -65,6 +66,36 @@ def image_to_save(im):
     else:
         return im.astype("uint8")
 
+def neighbors(shape, coord):
+    h, w = shape[:2]
+    y, x = coord
+    res = []
+    if y - 1 >= 0:
+        res.append((y-1, x))
+    if y + 1 < h:
+        res.append((y+1, x))
+    if x - 1 >= 0:
+        res.append((y, x-1))
+    if x + 1 < w:
+        res.append((y, x+1))
+    return res
+
+def BFS(map_, seed, tar_val):
+    visited = np.zeros_like(map_).astype(bool)
+    Q = deque()
+    Q.append(seed)
+    visited[seed] = True
+    while Q:
+        cur = Q.popleft()
+        if map_[cur] == tar_val:
+            return cur
+        else:
+            for n in neighbors(map_.shape, cur):
+                if not visited[n]:
+                    Q.append(n)
+                    visited[n] = True
+    raise ValueError(f"This map doesn't contain such value: {tar_val}")
+
 def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="centroid"):
     """
     Args:
@@ -82,10 +113,13 @@ def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="cen
         coords = np.argwhere(inst == inst_idx)
         if coords.shape[0] <= ignore_size:
             continue
+        center = get_center(coords, mode=center_mode)
+        if inst[center] != inst_idx:
+            center = BFS(inst, center, inst_idx)
         if binary:
-            point_map[get_center(coords, mode=center_mode)] = True
+            point_map[center] = True
         else:
-            point_map[get_center(coords, mode=center_mode)] = inst_idx
+            point_map[center] = inst_idx
     return point_map
 
 def booleanize_point_labels(pt_lbls):
