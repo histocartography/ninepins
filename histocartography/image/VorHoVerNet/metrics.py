@@ -647,6 +647,24 @@ def mark_nuclei(image_, output_map, label, stats=None, dot_pred=None):
 
     return b_image, p_image, l_image
 
+def mark_pixel(image_, output_map, label):
+    seg_map = output_map != 0
+    seg_label = label != 0
+
+    I = seg_map & seg_label
+    FP = seg_map & (~seg_label)
+    FN = (~seg_map) & seg_label
+
+    I_boundaries = get_label_boundaries(I * 1, d=0) > 0
+    FP_boundaries = get_label_boundaries(FP * 1, d=0) > 0
+    FN_boundaries = get_label_boundaries(FN * 1, d=0) > 0
+    image = image_.copy()
+    image[I_boundaries] = [0, 255, 0]
+    image[FP_boundaries] = [255, 0, 0]
+    image[FN_boundaries] = [0, 0, 255]
+    
+    return image
+
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
     from histocartography.image.VorHoVerNet.post_processing import get_output_from_file
