@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script for testing label improvement
+Script for 10-fold cross-validation
 """
 import logging
 import argparse
@@ -9,16 +9,15 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
-from skimage.morphology import label as cc, binary_dilation, disk
-from histocartography.image.VorHoVerNet.post_processing import improve_pseudo_labels, get_original_image_from_file, get_output_from_file, DEFAULT_TRANSFORM, DEFAULT_K
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei, dot_pred_stats
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
-from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
+from histocartography.image.VorHoVerNet.constants import SHUFFLED_IDX
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
 # setup logging
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-log = logging.getLogger('Histocartography::LabelImprovement')
+log = logging.getLogger('Histocartography::10Fold')
 h1 = logging.StreamHandler(sys.stdout)
 log.setLevel(logging.INFO)
 formatter = logging.Formatter(
@@ -30,19 +29,11 @@ log.addHandler(h1)
 # configure argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    '-s',
-    '--split',
-    type=str,
-    help='split of dataset to run.',
-    default='test',
-    required=False
-)
-parser.add_argument(
     '-o',
     '--output-path',
     type=str,
-    help='output path.',
-    default='../../histocartography/image/VorHoVerNet/iteration',
+    help='instance output path.',
+    default='../../histocartography/image/VorHoVerNet/output',
     required=False
 )
 parser.add_argument(
@@ -86,20 +77,11 @@ parser.add_argument(
     required=True
 )
 parser.add_argument(
-    '-m',
-    '--method',
-    type=str,
-    help='method to use for generating next iteration pseudolabel',
-    default='Voronoi',
-    choices=['Voronoi', 'instance'],
-    required=False
-)
-parser.add_argument(
-    '-n',
-    '--no-improve',
-    help='do not perform improvement. (evaluate current label)',
-    type=bool,
-    default=False,
+    '-g',
+    '--segmentation-threshold',
+    type=float,
+    help='threshold for segmentation prediction',
+    default=DEFAULT_H,
     required=False
 )
 parser.add_argument(
@@ -118,14 +100,6 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '-c',
-    '--ckpt-filename',
-    type=str,
-    help='filename of the checkpoint.',
-    default='model_009_ckpt_epoch_18',
-    required=False
-)
-parser.add_argument(
     '--strong-discard',
     type=bool,
     help='whether to use strong criteria when discarding FP',
@@ -133,75 +107,81 @@ parser.add_argument(
     required=False
 )
 parser.add_argument(
-    '--pseudolabel-version',
-    type=int,
-    help='version of pseudo label',
-    default=1,
+    '--extra-watershed',
+    type=bool,
+    help='whether to do extra watershed when a predicted nucleus covers multiple points',
+    default=True,
     required=False
+)
+parser.add_argument(
+    '--part',
+    type=int,
+    help='part of dataset to analyze',
+    required=True
 )
 
 def main(arguments):
     """
-    Run label improvement on the split of dataset
+    Run post-processing on the part of dataset
     Args:
         arguments (Namespace): parsed arguments.
     """
     # create aliases
-    SPLIT = arguments.split
     OUT_PATH = arguments.output_path
     IN_PATH = arguments.inference_path
     DATASET_ROOT = arguments.dataset_root
     DATASET = arguments.dataset
     PREFIX = arguments.prefix
-    METHOD = arguments.method
-    NO_IMPROVE = arguments.no_improve
+    SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
     V2 = arguments.v2
-    CKPT = arguments.ckpt_filename
     STRONG_DISCARD = arguments.strong_discard
-    VERSION = arguments.pseudolabel_version
+    EXTRA_WATERSHED = arguments.extra_watershed
+    PART = arguments.part
+    SPLIT = 'test'
+    CKPT = f'model_k{PART}_ckpt'
 
     os.makedirs(OUT_PATH, exist_ok=True)
 
     # dataset = CoNSeP(download=False, root=DATASET_PATH)
-    dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/", ver=VERSION)
-
-    metrics = VALID_METRICS.keys()
+    dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
     aggregated_metrics = {}
 
-    for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
-        ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
-        current_seg_mask = dataset.read_pseudo_labels(IDX, SPLIT) > 0
-        point_mask = dataset.read_points(IDX, SPLIT)
-        if NO_IMPROVE:
-            edges = binary_dilation(get_voronoi_edges(point_mask) > 0, disk(1))
-            new_cell = current_seg_mask & ~edges
-            new_cell = cc(new_cell)
-            for seg_idx in np.unique(new_cell):
-                if seg_idx == 0: continue
-                if np.count_nonzero((new_cell == seg_idx) & point_mask) == 0:
-                    new_cell[new_cell == seg_idx] = 0
-            new_cell = cc(new_cell)
-        else:
-            preds = get_output_from_file(IDX, transform=DEFAULT_TRANSFORM, root=IN_PATH, split=SPLIT, ckpt=CKPT, read_dot=V2)
-            _, new_cell = improve_pseudo_labels(ori, current_seg_mask, point_mask, preds, method=METHOD, k=DIS_THRESHOLD, strong_discard=STRONG_DISCARD)
-        image = draw_label_boundaries(ori, new_cell.copy())
-        out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
+    # for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
+    for i, IDX in enumerate(SHUFFLED_IDX[(PART - 1) * 3: PART * 3]):
+        metrics = list(VALID_METRICS.keys())
+        ori = get_original_image_from_file(i+1, root=IN_PATH, split=SPLIT, ckpt=CKPT)
+        output_map = get_instance_output(True, i+1, root=IN_PATH, split=SPLIT,
+                                        h=SEG_THRESHOLD, k=DIS_THRESHOLD,
+                                        ckpt=CKPT, dot_refinement=V2, 
+                                        strong_discard=STRONG_DISCARD, extra_watershed=EXTRA_WATERSHED)
+        if V2:
+            seg, hor, vet, dot = get_output_from_file(i+1, root=IN_PATH, split=SPLIT,
+                                        ckpt=CKPT, read_dot=True)
+        out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}_p{PART}'
         out_npy = out_file_prefix + '.npy'
         out_img = out_file_prefix + '.png'
         out_b_img = out_file_prefix + '_both.png'
         out_p_img = out_file_prefix + '_pred.png'
         out_l_img = out_file_prefix + '_label.png'
-        np.save(out_npy, new_cell)
+        np.save(out_npy, output_map)
+        image = draw_label_boundaries(ori, output_map.copy())
         imsave(out_img, image.astype(np.uint8))
         mlflow.log_artifact(out_npy)
         mlflow.log_artifact(out_img)
-        
-        label, _ = dataset.read_labels(IDX, SPLIT)        
-        s = score(new_cell, label, *metrics)
 
-        for img, p in zip(mark_nuclei(ori, new_cell, label, stats=s['nucleuswise_point'], dot_pred=preds[-1] if V2 and (not NO_IMPROVE) else None), [out_b_img, out_p_img, out_l_img]):
+        label, _ = dataset.read_labels(IDX, 'all')
+        point_mask = dataset.read_points(IDX, 'all')
+        s = score(output_map, label, *metrics)
+
+        if V2:
+            metrics += ['dot_pred', 'DQ_dot']
+            ss = dot_pred_stats(dot > 0.5, label)
+            s['dot_pred'] = ss
+            s['DQ_dot'] = ss['TP'] / (ss['TP'] + 0.5 * ss['FN'] + 0.5 * ss['FP'])
+
+        for img, p in zip(mark_nuclei(ori, output_map, label, stats=s['nucleuswise_point'], dot_pred=dot if V2 else None), [out_b_img, out_p_img, out_l_img]):
             img[point_mask] = [255, 255, 0]
             imsave(p, img)
             mlflow.log_artifact(p)
@@ -215,7 +195,7 @@ def main(arguments):
                         mlflow.log_metric(metric_name, val, step=(IDX-1))
                         if metric_name not in aggregated_metrics:
                             aggregated_metrics[metric_name] = []
-                        aggregated_metrics[metric_name].append(val) 
+                        aggregated_metrics[metric_name].append(val)
             else:
                 mlflow.log_metric(metric, value, step=(IDX-1))
                 if metric not in aggregated_metrics:
@@ -224,6 +204,7 @@ def main(arguments):
 
     for metric, score_list in aggregated_metrics.items():
         mlflow.log_metric("average_" + metric, sum(score_list) / len(score_list))
+
 
 if __name__ == "__main__":
     main(arguments=parser.parse_args())

@@ -1,0 +1,7 @@
+name: HoVerNet
+
+conda_env: conda.yml
+
+entry_points:
+  main:
+    command: "python3 script.py"

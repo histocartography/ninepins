@@ -205,6 +205,50 @@ def nucleuswise_stats(output_map, label):
         'Sensitivity': Sensitivity
     }
 
+def DICE(output_map, label):
+    output_map = (output_map > 0).astype(int)
+    label = (label > 0).astype(int)
+    I = (output_map * label).sum()
+    T = (output_map + label).sum()
+
+    return 2 * I / T
+
+def DICE2_(output_map, label):
+    """
+    Compute DICE2 score of model output and label.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        DICE2 (float)
+
+    Definition of matched nuclei:
+        nuclei exist both in model output and label, and have the maximum overlap.
+
+    For each annotated nucleus (X) and corresponding matched predicted nucleus (Y):
+        DICE = 2 * (|X intersect Y|) / (|X| + |Y|)
+    DICE2 = average of DICE
+
+    NOTE: label needs to be cropped first to fit the valid size of the model.
+    """
+    MAX_LABEL_IDX = int(label.max())
+    overall_I = 0
+    overall_T = 0
+    for idx in range(1, MAX_LABEL_IDX + 1):
+        overlapped_indices = np.unique(output_map[label == idx])
+        if len(overlapped_indices) == 0:
+            continue
+        B = (label == idx)
+
+        for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
+            A = (output_map == overlapped_index)
+            I = A & B
+            overall_I += np.count_nonzero(I)
+            overall_T += np.count_nonzero(A) + np.count_nonzero(B)
+
+    return 2 * overall_I / overall_T
+
 def DICE2(output_map, label):
     """
     Compute DICE2 score of model output and label.
@@ -483,6 +527,7 @@ VALID_METRICS = {
     'pixelwise': pixelwise_stats,
     'nucleuswise': nucleuswise_stats,
     'DICE2': DICE2,
+    'DICE': DICE,
     'AJI': AJI,
     'obj-AJI': obj_AJI,
     'DQ': DQ,
@@ -646,6 +691,24 @@ def mark_nuclei(image_, output_map, label, stats=None, dot_pred=None):
     l_image[FN_boundaries] = [255, 0, 0]
 
     return b_image, p_image, l_image
+
+def mark_pixel(image_, output_map, label):
+    seg_map = output_map != 0
+    seg_label = label != 0
+
+    I = seg_map & seg_label
+    FP = seg_map & (~seg_label)
+    FN = (~seg_map) & seg_label
+
+    I_boundaries = get_label_boundaries(I * 1, d=0) > 0
+    FP_boundaries = get_label_boundaries(FP * 1, d=0) > 0
+    FN_boundaries = get_label_boundaries(FN * 1, d=0) > 0
+    image = image_.copy()
+    image[I_boundaries] = [0, 255, 0]
+    image[FP_boundaries] = [255, 0, 0]
+    image[FN_boundaries] = [0, 0, 255]
+    
+    return image
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP

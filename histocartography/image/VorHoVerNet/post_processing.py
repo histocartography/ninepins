@@ -124,6 +124,110 @@ def _get_instance_output(seg, hor, vet, h=DEFAULT_H, k=DEFAULT_K):
 
     return res
 
+def _get_instance_output_dot(seg, hor, vet, dot, h=DEFAULT_H, k=DEFAULT_K):
+    """
+    Combine model output values from three branches into instance segmentation.
+    Args:
+        seg (numpy.ndarray[float]): segmentation output.
+        hor (numpy.ndarray[float]): horizontal distance map output.
+        vet (numpy.ndarray[float]): vertical distance map output.
+        dot (numpy.ndarray[float]): dot prediction output.
+        h (float): threshold for segmentation output.
+        k (float): threshold for distance map output.
+    Returns:
+        instance_map (numpy.ndarray[int]): instance map
+    """
+    """pre-process the output maps"""
+    th_seg = seg > h
+    th_seg = Cascade() \
+                .append(remove_small_objects, min_size=5) \
+                (th_seg)
+                # .append(binary_opening, disk(3)) \
+
+    # show(th_seg)
+
+    # hor_zero = (hor.max() + hor.min()) / 2
+    # vet_zero = (vet.max() + vet.min()) / 2
+
+    # d_hor = np.abs(hor - hor_zero)
+    # d_vet = np.abs(vet - vet_zero)
+
+    # print(hor_zero, vet_zero)
+    # show((d_hor < 0.05) & (d_vet < 0.05))
+
+    # m = (d_hor < 0.1) & (d_vet < 0.1)
+
+    """combine the output maps"""
+
+    """ - generate distance map"""
+    grad_hor = np.exp(shift_and_scale(np.abs(sobel_h(hor)), 1, 0) * 5)
+    grad_vet = np.exp(shift_and_scale(np.abs(sobel_v(vet)), 1, 0) * 5)
+    sig_diff = (grad_hor ** 2 + grad_vet ** 2) ** 0.5
+
+    sig_diff = Cascade() \
+                    .append(median_filter, size=5) \
+                    (sig_diff)
+    # show(sig_diff * (seg > h))
+    # show(grad_hor, grad_vet)
+    sig_diff[~th_seg] = 0
+
+    # sig_diff_ = sig_diff.copy()
+    # sig_diff_[m & th_seg & (sig_diff < 1.75)] = 100
+    # show(sig_diff_, save_name='why.png')
+
+    # grad_hor = shift_and_scale(np.abs(sobel_h(hor)), 1, 0)
+    # grad_vet = shift_and_scale(np.abs(sobel_v(vet)), 1, 0)
+    # sig_diff = np.maximum(grad_hor, grad_vet)
+    # sig_diff = Cascade() \
+    #                 .append(maximum_filter, size=3) \
+    #                 .append(median_filter, size=3) \
+    #                 (sig_diff)
+    #                 # .append(gaussian) \
+    # sig_diff[~th_seg] = 0
+
+    # show(hor, save_name='tellme.png')
+    # show(vet, save_name='please.png')
+    # show(sig_diff, save_name='myfriend.png')
+
+    """ - generate markers"""
+    # markers = m & th_seg & (sig_diff <= k)
+    # intermediate_prefix='markers/m'
+    # markers = Cascade() \
+    #                 .append(binary_opening, disk(1)) \
+    #                 .append(remove_small_objects, min_size=10) \
+    #                 (markers)
+
+    # markers = Cascade() \
+    #                 .append(binary_dilation, disk(3)) \
+    #                 .append(binary_fill_holes) \
+    #                 .append(binary_erosion, disk(3)) \
+    #                 (markers)
+                    # .append(remove_small_objects, min_size=5) \
+
+    markers = label(dot)
+    
+    # show(th_seg)
+    # show(markers)
+
+    """ - run watershed on distance map with markers"""
+    res = watershed(sig_diff, markers=markers, mask=th_seg)
+
+    """ - re-fill regions in thresholded nuclei map which do not have markers"""
+    not_in_watershed = th_seg & (res == 0)
+    lbl_th_seg = label(not_in_watershed)
+    offset = int(res.max())
+    lbl_th_seg += offset
+    lbl_th_seg[lbl_th_seg == offset] = 0
+    
+    # res = np.where((res == 0) & (lbl_th_seg != 0), lbl_th_seg, res)
+    res += lbl_th_seg
+
+    """debug"""
+    # imsave("output/sig_diff.png", (shift_and_scale(sig_diff, 1, 0) * 255).astype(np.uint8))
+    # imsave("output/markers.png", (label2rgb(markers, bg_label=0) * 255).astype(np.uint8))
+
+    return res
+
 def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong_discard=False, extra_watershed=True):
     """
     # *******         ********               *******                 
@@ -178,7 +282,7 @@ def _refine_instance_output(image, instance_map, point_pred, h=DEFAULT_H, strong
     instance_map = label(instance_map)
     return instance_map
 
-def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refinement=False, strong_discard=False, extra_watershed=True, **kwargs):
+def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_marker=False, dot_refinement=False, strong_discard=False, extra_watershed=True, **kwargs):
     """
     Combine model output values from three branches into instance segmentation.
     Args:
@@ -194,13 +298,16 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_refineme
     """read files or inference to get individual output"""
     if from_file:
         outputs = get_output_from_file(*args,
-                            transform=lambda im, seg: masked_scale(im, seg, th=h), read_dot=dot_refinement, **kwargs)
+                            transform=lambda im, seg: masked_scale(im, seg, th=h), read_dot=dot_refinement or dot_marker, **kwargs)
     else:
         outputs = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
 
     image = get_original_image_from_file(*args, **kwargs)
-    instance_map =  _get_instance_output(*outputs[:3], h=h, k=k)
+    if dot_marker:
+        instance_map =  _get_instance_output_dot(*outputs[:4], h=h, k=k)
+    else:
+        instance_map =  _get_instance_output(*outputs[:3], h=h, k=k)
     return _refine_instance_output(image, instance_map, outputs[-1], h=h, strong_discard=strong_discard, extra_watershed=extra_watershed) if dot_refinement else instance_map
 
 def get_output_from_file(idx,

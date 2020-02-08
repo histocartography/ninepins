@@ -10,7 +10,7 @@ import os
 import mlflow
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file
-from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei
+from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei, mark_pixel, dot_pred_stats
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 
@@ -99,11 +99,19 @@ parser.add_argument(
     default=DEFAULT_K,
     required=False
 )
+# parser.add_argument(
+#     '--v2',
+#     type=bool,
+#     help='whether to use v2 (dot refinement)',
+#     default=False,
+#     required=False
+# )
 parser.add_argument(
-    '--v2',
-    type=bool,
-    help='whether to use v2 (dot refinement)',
-    default=False,
+    '--version',
+    type=int,
+    help='version of post processing algorithm',
+    choices=list(range(1, 5)),
+    default=2,
     required=False
 )
 parser.add_argument(
@@ -144,7 +152,8 @@ def main(arguments):
     PREFIX = arguments.prefix
     SEG_THRESHOLD = arguments.segmentation_threshold
     DIS_THRESHOLD = arguments.distancemap_threshold
-    V2 = arguments.v2
+    # V2 = arguments.v2
+    VERSION = arguments.version
     CKPT = arguments.ckpt_filename
     STRONG_DISCARD = arguments.strong_discard
     EXTRA_WATERSHED = arguments.extra_watershed
@@ -154,17 +163,19 @@ def main(arguments):
     # dataset = CoNSeP(download=False, root=DATASET_PATH)
     dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
-    metrics = VALID_METRICS.keys()
-
     aggregated_metrics = {}
 
+    d_m = VERSION > 2
+    d_r = (VERSION % 2) == 0
+
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
+        metrics = list(VALID_METRICS.keys())
         ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
         output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
                                         h=SEG_THRESHOLD, k=DIS_THRESHOLD,
-                                        ckpt=CKPT, dot_refinement=V2, 
+                                        ckpt=CKPT, dot_marker=d_m, dot_refinement=d_r, 
                                         strong_discard=STRONG_DISCARD, extra_watershed=EXTRA_WATERSHED)
-        if V2:
+        if d_r:
             seg, hor, vet, dot = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
                                         ckpt=CKPT, read_dot=True)
         out_file_prefix = f'{OUT_PATH}/mlflow_{PREFIX}_{IDX}'
@@ -173,6 +184,7 @@ def main(arguments):
         out_b_img = out_file_prefix + '_both.png'
         out_p_img = out_file_prefix + '_pred.png'
         out_l_img = out_file_prefix + '_label.png'
+        out_iou_img = out_file_prefix + '_iou.png'
         np.save(out_npy, output_map)
         image = draw_label_boundaries(ori, output_map.copy())
         imsave(out_img, image.astype(np.uint8))
@@ -183,10 +195,20 @@ def main(arguments):
         point_mask = dataset.read_points(IDX, SPLIT)
         s = score(output_map, label, *metrics)
 
-        for img, p in zip(mark_nuclei(ori, output_map, label, stats=s['nucleuswise_point'], dot_pred=dot if V2 else None), [out_b_img, out_p_img, out_l_img]):
+        if d_r:
+            metrics += ['dot_pred', 'DQ_dot']
+            ss = dot_pred_stats(dot > 0.5, label)
+            s['dot_pred'] = ss
+            s['DQ_dot'] = ss['TP'] / (ss['TP'] + 0.5 * ss['FN'] + 0.5 * ss['FP'])
+
+        for img, p in zip(mark_nuclei(ori, output_map, label, stats=s['nucleuswise_point'], dot_pred=dot if d_r else None), [out_b_img, out_p_img, out_l_img]):
             img[point_mask] = [255, 255, 0]
             imsave(p, img)
             mlflow.log_artifact(p)
+
+        IOU_image = mark_pixel(ori, output_map, label)
+        imsave(out_iou_img, IOU_image)
+        mlflow.log_artifact(out_iou_img)
 
         for metric in metrics:
             value = s[metric]

@@ -1,0 +1,9 @@
+name: VorHoVerNet_10_fold
+
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      prefix: string
+    command: "python3 script.py -p {prefix}"

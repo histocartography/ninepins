@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable, Mapping
+from collections import deque
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage.morphology import distance_transform_edt
@@ -65,7 +66,37 @@ def image_to_save(im):
     else:
         return im.astype("uint8")
 
-def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="centroid"):
+def neighbors(shape, coord):
+    h, w = shape[:2]
+    y, x = coord
+    res = []
+    if y - 1 >= 0:
+        res.append((y-1, x))
+    if y + 1 < h:
+        res.append((y+1, x))
+    if x - 1 >= 0:
+        res.append((y, x-1))
+    if x + 1 < w:
+        res.append((y, x+1))
+    return res
+
+def BFS(map_, seed, tar_val):
+    visited = np.zeros_like(map_).astype(bool)
+    Q = deque()
+    Q.append(seed)
+    visited[seed] = True
+    while Q:
+        cur = Q.popleft()
+        if map_[cur] == tar_val:
+            return cur
+        else:
+            for n in neighbors(map_.shape, cur):
+                if not visited[n]:
+                    Q.append(n)
+                    visited[n] = True
+    raise ValueError(f"This map doesn't contain such value: {tar_val}")
+
+def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="centroid", perturb_func=None, **kwargs):
     """
     Args:
         inst (numpy.ndarray[int]): instance map of nuclei. (integers larger than 0 indicates the nuclear instance)
@@ -82,11 +113,59 @@ def get_point_from_instance(inst, ignore_size=10, binary=False, center_mode="cen
         coords = np.argwhere(inst == inst_idx)
         if coords.shape[0] <= ignore_size:
             continue
+        center = get_center(coords, mode=center_mode)
+        if inst[center] != inst_idx:
+            center = BFS(inst, center, inst_idx)
+        if perturb_func is not None:
+            center = perturb_func(center, inst, inst_idx, coords, **kwargs)
         if binary:
-            point_map[get_center(coords, mode=center_mode)] = True
+            point_map[center] = True
         else:
-            point_map[get_center(coords, mode=center_mode)] = inst_idx
+            point_map[center] = inst_idx
     return point_map
+
+def random_normal_shift(center, inst, inst_idx, coords, max_retry=10, eta=0.8, verbose=False):
+    y, x = center
+    horizontal_line = [c[1] for c in coords if c[0] == y]
+    x_min, x_max = min(horizontal_line), max(horizontal_line)
+    vertical_line = [c[0] for c in coords if c[1] == x]
+    y_min, y_max = min(vertical_line), max(vertical_line)
+    x_perturb = min(x_max - x, x - x_min)
+    y_perturb = min(y_max - y, y - y_min)
+    x_perturb = eta * x_perturb
+    y_perturb = eta * y_perturb
+    retry_count = 0
+    while retry_count < max_retry:
+        # probability of samples lying beyond 3 stds from center is almost 0.
+        new_x = np.random.normal(x, x_perturb / 3)
+        new_y = np.random.normal(y, y_perturb / 3)
+        if abs(new_x - x) < x_perturb and abs(new_y - y) < y_perturb and inst[int(new_y), int(new_x)] == inst_idx:
+            # if the sampled set of coordinates is beyond the perturbation range or outside the instance region, re-draw.
+            new_x = int(new_x)
+            new_y = int(new_y)
+            break
+        retry_count += 1
+    else:
+        if verbose:
+            print(f"too many retries, give up perturbating on instance: {inst_idx}")
+        new_x = x
+        new_y = y
+    return new_y, new_x
+
+def get_random_shifted_point_from_instance(inst, eta, ignore_size=10, binary=False, center_mode="centroid", max_retry=10, verbose=False):
+    """
+    Args:
+        inst (numpy.ndarray[int]): instance map of nuclei. (integers larger than 0 indicates the nuclear instance)
+        eta (float): perturbation ratio.
+        ignore_size (int): minimum size of a nuclei.
+        binary (bool): annotate point with binary value? Otherwise, with integer value.
+    Returns:
+        point_map (numpy.ndarray[int / bool if binary]): point map of nuclei. (integers larger than 0 indicates the nuclear instance)
+    """
+    if eta == 0:
+        return get_point_from_instance(inst, ignore_size=ignore_size, binary=binary, center_mode=center_mode)
+    assert 0 < eta <= 1, "Perturbation ratio should lie in [0, 1]."
+    return get_point_from_instance(inst, ignore_size=ignore_size, binary=binary, center_mode=center_mode, perturb_func=random_normal_shift, eta=eta, max_retry=max_retry, verbose=verbose)
 
 def booleanize_point_labels(pt_lbls):
     """

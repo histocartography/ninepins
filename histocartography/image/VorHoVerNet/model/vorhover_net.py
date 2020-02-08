@@ -252,6 +252,19 @@ class Decoder(nn.Module):
         return [decoded1, decoded2, decoded3]
 
 class Net(nn.Module):
+    MAPPING = {
+        'beta': 'bias',
+        'gamma': 'weight',
+        'mean': 'running_mean',
+        'variance': 'running_var'
+    }
+
+    BNLAST_BLOCK = {
+        'group0': '2',
+        'group1': '3',
+        'group2': '5',
+        'group3': '2'
+    }
 
     def __init__(self, batch_size=16):
         super(Net, self).__init__()
@@ -329,7 +342,57 @@ class Net(nn.Module):
             new_key = key[len_:]
             new_dict[new_key] = value
         self.load_state_dict(new_dict)
-        
+
+    def load_pretrained(self, npz):
+        cur_dict = self.state_dict()
+        for key, value in npz.items():
+            try:
+                new_key = self.tf2torch(key)
+            except KeyError:
+                continue
+            try:
+                if len(value.shape) == 4:
+                    value = value.transpose(3, 2, 0, 1)
+                cur_dict[new_key].copy_(torch.from_numpy(value))
+            except RuntimeError as e:
+                print(cur_dict[new_key].shape, value.shape)
+                raise e
+            else:
+                print(new_key)
+        self.load_state_dict(cur_dict)
+
+    def tf2torch(self, key):
+        tokens = key[:-2].split('/')
+        group = tokens[0]
+        if group == 'linear': raise KeyError
+        if group.startswith('group'):
+            block = tokens[1]
+            if block.startswith('block'):
+                block = block[5:]
+                layer = tokens[2]
+                op = tokens[3]
+                if op == 'bn':
+                    layer = 'bn' + layer[4:] if layer != 'preact' else layer
+                    return '.'.join(['encoder', group, block, layer, self.MAPPING[tokens[4]]])
+                elif op == 'W':
+                    return '.'.join(['encoder', group, block, layer, 'weight'])
+                else:
+                    raise KeyError
+            elif block == 'bnlast':
+                return '.'.join(['encoder', group, self.BNLAST_BLOCK[group], block, self.MAPPING[tokens[3]]])
+            else:
+                raise KeyError
+        elif group == 'conv0':
+            op = tokens[1]
+            if op == 'bn':
+                return '.'.join([op, self.MAPPING[tokens[2]]])
+            elif op == 'W':
+                return 'conv0.weight'
+            else:
+                raise KeyError
+        else:
+            raise KeyError
+            
     # def one_hot(self, indices, depth):
     #     """
     #     Returns a one-hot tensor.
