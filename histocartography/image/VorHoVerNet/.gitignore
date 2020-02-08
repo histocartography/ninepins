@@ -26,3 +26,4 @@ inference.py
 dataset_iter.py
 no_gpu_need.lsf
 train.sh
+.set_environment_variables

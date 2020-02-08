@@ -23,7 +23,8 @@ from torch.autograd import Variable
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 1, 1, 2, 1]):
+    def __init__(self, weights=[1, 1, 1, 2, 1, 3]):
+        # 'bce', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
 #         self.weights = self.weights / sum(self.weights)
@@ -62,17 +63,26 @@ class CustomLoss(nn.Module):
         dv = F.conv2d(v, vk, padding=2).permute(0, 2, 3, 1)
         return torch.cat((dh, dv), axis=-1)
 
+    @staticmethod
+    def dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv):
+        pred_dot = pred_dot >= 0.5
+        pred_focus = torch.cat((pred_dot, pred_dot), axis=-1)
+        gt_focus = torch.cat((gt_dot, gt_dot), axis=-1)
+        pred_area = pred_focus * pred_hv
+        gt_area = gt_focus * gt_hv
+        return F.mse_loss(pred_area, gt_area)
+
     def msge_loss(self, pred, gt, focus):
         focus = torch.cat((focus, focus), axis=-1)
         pred_grad = self.get_gradient(pred)
         gt_grad = self.get_gradient(gt)
-        loss = pred_grad - gt_grad
-        loss = focus * (loss * loss)
-        loss = torch.sum(loss) / (torch.sum(loss) + 1.0e-8)
-#         return F.mse_loss(pred_grad, gt_grad)
-        return loss
+        # loss = pred_grad - gt_grad
+        # loss = focus * (loss * loss)
+        # loss = torch.sum(loss) / (torch.sum(loss) + 1.0e-8)
+        return F.mse_loss(pred_grad, gt_grad)
+        # return loss
 
-    def forward(self, preds, gts, prefix=None, mode='single'):
+    def forward(self, preds, gts, contain='single'):
         # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
         gt_seg, gt_hv, gt_dot = torch.split(gts[..., :4], [1, 2, 1], dim=-1)
@@ -81,23 +91,25 @@ class CustomLoss(nn.Module):
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # masked binary cross entropy loss
-        mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) + F.binary_cross_entropy(pred_dot, gt_dot)
+        mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
         # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
         # dice loss
         dice = self.dice_loss(pred_seg, gt_seg)
         # mean square error of distance maps and their gradients
         mse = F.mse_loss(pred_hv, gt_hv)
         msge = self.msge_loss(pred_hv, gt_hv, gt_seg)
+        # mean square error for dot and distance maps
+        ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         
-        loss = bce * self.weights[0] + mbce * self.weights[1] + dice * self.weights[2] + mse * self.weights[3] + msge * self.weights[4] 
+        loss = bce * self.weights[0] + mbce * self.weights[1] + dice * self.weights[2] + mse * self.weights[3] + msge * self.weights[4] + ddmse * self.weights[5]
 
-        if mode == 'single':
+        if contain == 'single':
             return loss
         
-        names = ['loss', 'bce', 'mbce', 'dice', 'mse', 'msge']
-        losses = [loss, bce, mbce, dice, mse, msge]
-        if prefix is not None:
-            names = ['{}_{}'.format(prefix, n) for n in names]
+        names = ('loss', 'bce', 'mbce', 'dice', 'mse', 'msge', 'ddmse')
+        losses = [loss, bce, mbce, dice, mse, msge, ddmse]
+        # if prefix is not None:
+        #     names = ['{}_{}'.format(prefix, n) for n in names]
         return {name: loss for name, loss in zip(names, losses)}
 
 class PreActResBlock(nn.Module):
@@ -380,7 +392,7 @@ class Net(nn.Module):
                 raise KeyError
         else:
             raise KeyError
-
+            
     # def one_hot(self, indices, depth):
     #     """
     #     Returns a one-hot tensor.

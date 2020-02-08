@@ -1,0 +1,21 @@
+name: VorHoVerNet_training
+
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      model_name: {type: string, default: model_default}
+      output_root: {type: string, default: ./outputs}
+      batch_size: {type: int, default: 8}
+      data_path: {type: string, default: ./}
+      dataset: {type: string, default: CoNSeP/}
+      iteration: {type: int, default: 0}
+      version: {type: int, default: 0}
+      bucket: {type: string, default: test-data}
+      number_of_workers: {type: int, default: 1}
+      learning_rate: {type: float, default: 1e-4}
+      log_interval: {type: int, default: 150}
+      early_stop_monitor: {type: string, default: val_loss}
+      early_stop_patience: {type: int, default: 10}
+    command: "python train_mlflow.py -n {model_name} --output_root {output_root} -d {data_path} -v {version} -i {iteration} --batch_size {batch_size} --early_stop_patience {early_stop_patience} -d {data_path} -t {dataset} --bucket {bucket} -p {number_of_workers} --lr {learning_rate} --log_interval {log_interval} --early_stop_monitor {early_stop_monitor}"
