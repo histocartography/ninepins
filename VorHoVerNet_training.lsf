@@ -1,0 +1,38 @@
+#BSUB -q prod.short
+#BSUB -n 4
+#BSUB -J "VorHoVerNet"
+#BSUB -e "/u/hun/logs/VHV_log.%J.stderr"
+#BSUB -o "/u/hun/logs/VHV_log.%J.stdout"
+
+# Time stamp
+time_stamp=$(date +"%Y%m%d%H%M%S")
+
+# module load Anaconda3/2019.03-rhel-7
+
+# Training & validation
+# TODO: modify for our case
+MODEL_NAME=model_test
+OUTPUT_ROOT=/u/hun/ninepins/histocartography/image/VorHoVerNet/output
+BATCH_SIZE=12
+DATA_PATH=/u/hun/ninepins/histocartography/image/VorHoVerNet
+DATASET=CoNSeP
+VERSION=0
+ITERATION=0
+# BUCKET=test-data
+NUMBER_OF_WORKERS=1
+LEARNING_RATE=1e-4
+LOG_INTERVAL=300
+EARLY_STOP_MONITOR=val_loss
+EARLY_STOP_PATIENCE=10
+
+source /u/hun/.set_environment_variables
+
+export MLFLOW_EXPERIMENT_NAME=hun_VorHoVerNet_training
+
+# TODO: modify for our case
+echo "ready to run qqq"
+
+mlflow experiments create --artifact-location s3://mlflow -n ${MLFLOW_EXPERIMENT_NAME}
+mlflow run /u/hun/ninepins/experiments/VorHoVerNet_training -P model_name=$MODEL_NAME -P output_root=$OUTPUT_ROOT -P batch_size=$BATCH_SIZE -P data_path=$DATA_PATH -P dataset=$DATASET -P version=$VERSION -P iteration=$ITERATION -P number_of_workers=$NUMBER_OF_WORKERS -P learning_rate=$LEARNING_RATE -P log_interval=$LOG_INTERVAL -P early_stop_monitor=$EARLY_STOP_MONITOR -P early_stop_patience=$EARLY_STOP_PATIENCE 
+
+echo "job finished"

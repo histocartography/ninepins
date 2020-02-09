@@ -28,3 +28,4 @@ dataset_iter.py
 hover.py
 no_gpu_need.lsf
 train.sh
+.set_environment_variables
