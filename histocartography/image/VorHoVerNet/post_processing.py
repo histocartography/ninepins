@@ -287,6 +287,7 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_marker=F
     Combine model output values from three branches into instance segmentation.
     Args:
         from_file (bool): read model output from file? Otherwise, obtain by feeding input into model.
+        NOTE: when set to False, only support single patch (input size of model)
         args (list[any]): arguments for get_output_from_*.
         h (float): threshold for the output map.
         k (float): threshold for the distance map.
@@ -299,11 +300,11 @@ def get_instance_output(from_file, *args, h=DEFAULT_H, k=DEFAULT_K, dot_marker=F
     if from_file:
         outputs = get_output_from_file(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), read_dot=dot_refinement or dot_marker, **kwargs)
+        image = get_original_image_from_file(*args, **kwargs)
     else:
         outputs = get_output_from_model(*args,
                             transform=lambda im, seg: masked_scale(im, seg, th=h), **kwargs)
-
-    image = get_original_image_from_file(*args, **kwargs)
+        image = args[0].squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
     if dot_marker:
         instance_map =  _get_instance_output_dot(*outputs[:4], h=h, k=k)
     else:
@@ -674,20 +675,21 @@ def improve_pseudo_labels(image, current_seg_mask, point_mask, preds, h=DEFAULT_
 
     return new_seg, new_cell
 
-def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=270, validsize=80, imagesize=1000):
+def gen_next_iteration_labels(dataset, curr_iter, ckpt, split, ver=1, inputsize=1230, patchsize=270, validsize=80, imagesize=1000):
     import os
     from skimage.io import imsave
     from torch.utils.data import DataLoader
     
-    from dataset_reader import CoNSeP
+    import dataset_reader
     from dataset import CoNSeP_cropped, data_reader
     from model.vorhover_net import Net
 
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     # load datasets
-    dataset = CoNSeP(download=False, itr=curr_iter)
-    torch_dataset = CoNSeP_cropped(*data_reader(root='CoNSeP/', split=split, itr=curr_iter, doflip=False, contain_both=False, part=None))
+    dataset_name = dataset
+    dataset = getattr(dataset_reader, dataset_name)(download=False, itr=curr_iter, ver=ver)
+    torch_dataset = CoNSeP_cropped(*data_reader(dataset=dataset_name, split=split, itr=curr_iter, doflip=False, contain_both=False, part=None))
     data_loader = DataLoader(torch_dataset, batch_size=1, shuffle=False)
     pseudo_path = '/'.join(dataset.get_path(1, split, 'pseudo', itr=curr_iter+1).split('/')[:-1])
     os.makedirs(pseudo_path, exist_ok=True)
@@ -696,7 +698,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
     checkpoint = torch.load(ckpt, map_location=device)
     print('model_name: {}'.format(ckpt))
     model = Net()
-    model.load_state_dict(checkpoint['state_dict'])
+    # model.load_state_dict(checkpoint['state_dict'])
+    model.load_model(checkpoint)
     model.to(device)
     model.eval()
 
@@ -713,6 +716,7 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
     pred_seg = np.zeros(wholesize, dtype=np.float32)
     pred_hor = np.zeros(wholesize, dtype=np.float32)
     pred_vet = np.zeros(wholesize, dtype=np.float32)
+    pred_dot = np.zeros(wholesize, dtype=np.float32)
 
     for idx, (img, gt) in enumerate(data_loader):
         gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()[..., 0]
@@ -720,11 +724,12 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
         j = (idx % step) % cols
         current_seg_mask[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = gt
 
-        seg, hor, vet = get_output_from_model(img.to(device), model, transform=DEFAULT_TRANSFORM)
+        seg, hor, vet, dot = get_output_from_model(img.to(device), model, transform=DEFAULT_TRANSFORM)
 
         pred_seg[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = seg
         pred_hor[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = hor
         pred_vet[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = vet
+        pred_dot[validsize * i: validsize * (i + 1), validsize * j: validsize * (j + 1)] = dot
 
         image_idx = (idx // step) + 1
         print(f'image: {image_idx}/{total_images}, patch: {idx+1}/{total_patches}', end='\r')
@@ -734,7 +739,8 @@ def gen_next_iteration_labels(curr_iter, ckpt, split, inputsize=1230, patchsize=
             pred_hor_ = pred_hor[:imagesize, :imagesize]
             pred_vet_ = pred_vet[:imagesize, :imagesize]
             point_mask = dataset.read_points(image_idx, split)
-            new_seg, new_cell = improve_pseudo_labels(current_seg_mask_, point_mask, pred_seg_, pred_hor_, pred_vet_)
+            image = dataset.read_image(image_idx, split)
+            new_seg, new_cell = improve_pseudo_labels(image, current_seg_mask_, point_mask, pred_seg_, pred_hor_, pred_vet_)
             assert new_seg.shape == (1000, 1000) and new_cell.shape == (1000, 1000), "I fucked up."
             # get voronoi edges
             edges = np.zeros_like(new_seg).astype(bool)
