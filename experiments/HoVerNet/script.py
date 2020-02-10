@@ -68,7 +68,8 @@ def main(arguments):
     aggregated_metrics = {}
 
     for IDX in range(1, dataset.IDX_LIMITS['test'] + 1):
-        output_map = np.load(PREDICTION_DIR + f'test_{IDX}.npy')
+        filename = dataset.get_path(IDX, 'test', 'label').split('/')[-1]
+        output_map = np.load(PREDICTION_DIR + filename)
         label, _ = dataset.read_labels(IDX, 'test')
         s = score(output_map, label, *metrics)
 
