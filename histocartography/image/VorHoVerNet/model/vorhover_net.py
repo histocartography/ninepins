@@ -343,7 +343,7 @@ class Net(nn.Module):
             new_dict[new_key] = value
         self.load_state_dict(new_dict)
 
-    def load_pretrained(self, npz):
+    def load_pretrained(self, npz, print_name=True):
         cur_dict = self.state_dict()
         for key, value in npz.items():
             try:
@@ -355,10 +355,12 @@ class Net(nn.Module):
                     value = value.transpose(3, 2, 0, 1)
                 cur_dict[new_key].copy_(torch.from_numpy(value))
             except RuntimeError as e:
-                print(cur_dict[new_key].shape, value.shape)
+                if print_name:
+                    print(cur_dict[new_key].shape, value.shape)
                 raise e
             else:
-                print(new_key)
+                if print_name:
+                    print(new_key)
         self.load_state_dict(cur_dict)
 
     def tf2torch(self, key):
@@ -392,7 +394,33 @@ class Net(nn.Module):
                 raise KeyError
         else:
             raise KeyError
-            
+    
+    # def load_save_pretrained(self, npz, required_dict, output_path, prefix='model.'):
+    #     pre_ckpt = f'{output_path}/model_pre_ckpt_epoch_0.ckpt'
+
+    #     # check if any ckpt exists
+    #     import os
+    #     if os.path.isdir(output_path):
+    #         filename = [name for name in os.listdir(output_path) if name.endswith('.ckpt')]
+    #         assert len(filename) == 0 or pre_ckpt.split('/')[-1] in filename, "extra ckpt in output dir rather than pretrained."
+    #     else:
+    #         os.makedirs(output_path, exist_ok=True)
+        
+    #     # load, modify keys and save to path
+    #     from collections import OrderedDict
+    #     new_dict = OrderedDict()
+    #     self.load_pretrained(npz, print_name=False)
+    #     for key, value in self.state_dict().items():
+    #         new_key = prefix + key
+    #         new_dict[new_key] = value
+
+    #     new_ckpt = {'state_dict': new_dict}
+    #     for k, v in required_dict.items():
+    #         new_ckpt[k] = v
+
+    #     torch.save(new_ckpt, pre_ckpt)
+    #     print(f"Pretrained weights saved as {pre_ckpt}")
+
     # def one_hot(self, indices, depth):
     #     """
     #     Returns a one-hot tensor.

@@ -92,8 +92,14 @@ parser.add_argument(
     '--early_stop_monitor', type=str, default='val_loss', metavar='N', 
     help='criterion monitor for early stopping (default: val_loss)'
 )
-# parser.add_argument('--mlflow_log', type=str, default='True',
-#                     help='whether use mlflow as logger')
+parser.add_argument(
+    '--load_pretrained', type=str, default='False',
+    help='whether load pretrained weights or not (default: False)'
+)
+parser.add_argument(
+    '--pretrained_weights', type=str, default='../../histocartography/image/VorHoVerNet/savers/ImageNet-ResNet50-Preact.npz',
+    help='output root path (default: ./)'
+)
 # parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
 #                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
@@ -122,6 +128,8 @@ def main(args):
     EARLY_STOP_PATIENCE = args.early_stop_patience
     EARLY_STOP_MONITOR = args.early_stop_monitor
     OUTPUT_ROOT = f'{args.output_root}/{args.model_name}'
+    LOAD_PRETRAINED = True if 't' in args.load_pretrained.lower() else False
+    PRETRAINED_WEIGHTS = args.pretrained_weights
 
     # EXPERIMENT_NAME = f'{MODEL_NAME}_iter{ITERATION:02d}'
     # INFERENCE_MODE = True if NUMBER_OF_WORKERS == 1 else False
@@ -192,7 +200,7 @@ def main(args):
 
     # prepare data_loaders
     train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
+    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=[1]))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -208,9 +216,27 @@ def main(args):
 
     # define model and optimizer
     model = Net(batch_size=BATCH_SIZE)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
+
+    # print(model.state_dict()['encoder.group0.0.conv2.weight'][5][0][1:3])
+    # if LOAD_PRETRAINED:
+    #     print(f"Loading pretrained weights from {PRETRAINED_WEIGHTS}")
+    #     npz = np.load(PRETRAINED_WEIGHTS)
+    #     model.load_pretrained(npz, print_name=False)
+        # required_dict = {
+        #     'early_stop_callback_patience': EARLY_STOP_PATIENCE,
+        #     'optimizer_states': optimizer.state_dict(), 
+        #     'lr_schedulers': lr_scheduler,
+        #     'early_stop_callback_wait': 0,
+        #     'checkpoint_callback_best': 0.5,
+        #     'epoch': 0,
+        #     'global_step': 0
+        # }
+        # model.load_save_pretrained(npz, required_dict, output_path=f'{OUTPUT_ROOT}/checkpoints')
+    
+    # print(model.state_dict()['encoder.group0.0.conv2.weight'][5][0][1:3])
+
 
     cbrontes_model = CusBrontes(
         model=model,
@@ -225,7 +251,9 @@ def main(args):
         inf_batches=[inf_batch_train, inf_batch_valid],
         model_name=MODEL_NAME,
         output_root=OUTPUT_ROOT,
-        num_gpus=NUMBER_OF_WORKERS
+        num_gpus=NUMBER_OF_WORKERS,
+        load_pretrained=LOAD_PRETRAINED,
+        pretrained_path=PRETRAINED_WEIGHTS
     )
 
     from pytorch_lightning.callbacks import ModelCheckpoint

@@ -18,4 +18,6 @@ entry_points:
       log_interval: {type: int, default: 150}
       early_stop_monitor: {type: string, default: val_loss}
       early_stop_patience: {type: int, default: 10}
-    command: "python train_mlflow.py -n {model_name} --output_root {output_root} -d {data_path} -v {version} -i {iteration} --batch_size {batch_size} --early_stop_patience {early_stop_patience} -d {data_path} -t {dataset} --bucket {bucket} -p {number_of_workers} --lr {learning_rate} --log_interval {log_interval} --early_stop_monitor {early_stop_monitor}"
+      load_pretrained: {type: string, default: False}
+      pretrained_weights: {type: string, default: ../../histocartography/image/VorHoVerNet/savers/ImageNet-ResNet50-Preact.npz}
+    command: "python train_mlflow.py -n {model_name} --output_root {output_root} -d {data_path} -v {version} -i {iteration} --batch_size {batch_size} --early_stop_patience {early_stop_patience} -d {data_path} -t {dataset} --bucket {bucket} -p {number_of_workers} --lr {learning_rate} --log_interval {log_interval} --early_stop_monitor {early_stop_monitor} --load_pretrained {load_pretrained} --pretrained_weights {pretrained_weights}"
