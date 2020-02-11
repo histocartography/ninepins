@@ -110,6 +110,7 @@ venv.bak/
 data/
 mlruns/
 tmp/
+experiments/VorHoVerNet_training/outputs/
 *.tif
 *.xml
 *.png
