@@ -8,6 +8,7 @@ from histocartography.image.VorHoVerNet.dataset import CoNSeP_cropped, data_read
 from histocartography.image.VorHoVerNet.model.vorhover_net import CustomLoss, Net
 from histocartography.image.VorHoVerNet.utils import scale, shift_and_scale
 
+device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
     """
@@ -29,6 +30,8 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     fig, ax = plt.subplots(4, 5, figsize=(12, 9))
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
+        img = img.to(device)
+        gt = gt.to(device)
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
         filename = './inference/{}/patch{:04d}.png'.format(figpath_fix, idx + 1)
@@ -121,6 +124,8 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
 
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
+        img = img.to(device)
+        gt = gt.to(device)
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
         imgdir = savedir.format(figpath_fix, split, idx + 1)
@@ -176,11 +181,12 @@ if __name__ == '__main__':
     print('model_name: {}'.format(model_name))
     model = Net()
     model.load_model(checkpoint)
+    model.to(device)
     model.eval()
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='MoNuSeg/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(dataset='CoNSeP', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference
