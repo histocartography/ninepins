@@ -9,6 +9,7 @@ savers_pl/*
 inference/*
 output/*
 VorHoVerNet_training/*
+savers/*
 *.ckpt
 *.pt
 *.pkl
@@ -29,3 +30,4 @@ hover.py
 no_gpu_need.lsf
 train.sh
 .set_environment_variables
+ta.py

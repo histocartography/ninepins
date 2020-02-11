@@ -28,7 +28,9 @@ class CusBrontes(Brontes):
         inf_batches=None,
         model_name='model_default',
         output_root='./',
-        num_gpus=1
+        num_gpus=1,
+        load_pretrained=False,
+        pretrained_path=None
     ):
         """
         Args:
@@ -61,6 +63,8 @@ class CusBrontes(Brontes):
         self.model_name = model_name
         self.output_root = output_root # for log_artifacts
         self.num_gpus = num_gpus
+        self.load_pretrained = load_pretrained
+        self.pretrained_path = pretrained_path
 
         self.training_end_count = 0
         # self.batchsize = self.inf_batches[0][0].shape[0]
@@ -85,6 +89,7 @@ class CusBrontes(Brontes):
         print(f'\tstart epoch: {self.start_epoch + 1}')
         print(f'\troot path: {self.output_root}')
         print(f'\tvisualize: {self.visualize}')
+        print(f'\tload pretrained weights: {self.load_pretrained}')
         if self.visualize:
             if self.inf_batches is None:
                 print('\tvisualize is reset to FALSE due to no input inf_batches.')
@@ -92,6 +97,9 @@ class CusBrontes(Brontes):
             self.figpath = f'{self.output_root}/visualize'
             os.makedirs(self.figpath, exist_ok=True)
             print('\tinference image dir: {}'.format(self.figpath))
+        if self.load_pretrained:
+            assert self.pretrained_path is not None, "got nothing from pretrained path"
+            print(f'\tload pretrained weights from {self.pretrained_path}')
 
             # reminders
             # if self.num_gpus > 1:
@@ -191,6 +199,12 @@ class CusBrontes(Brontes):
             mlflow.log_param('existing models', 'No checkpoint saved yet.')
 
     def training_step(self, batch, idx, mode='train', contain='all'):
+        if self.current_epoch == 0 and idx == 0 and self.load_pretrained and mode == 'train':
+            npz = np.load(self.pretrained_path)
+            self.model.load_pretrained(npz, print_name=False)
+            # print('load pretrained', idx)
+        # print(self.state_dict()['model.encoder.group0.0.conv2.weight'][5][0][1:3])
+
         img, gts = batch
         preds = self.forward(img)
 
