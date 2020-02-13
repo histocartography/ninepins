@@ -109,16 +109,25 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
         dot_mask = binary_dilation(point_mask, selem=disk(2))
         dot_mask = np.expand_dims(dot_mask, axis=-1)
 
-        # get cluster masks
-        seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
+        if ver == 2:
+            # use true label
+            seg_mask_edge = lab > 0
 
-        # version adjestments
-        if ver == 0:
-            # do not thing with edges
-            seg_mask_edge = seg_mask
-        elif ver == 1:
-            # set edges as background
-            seg_mask_edge = seg_mask & (edges == 0)
+        elif ver == 3:
+            # use dilated point as label
+            seg_mask_edge = binary_dilation(point_mask, selem=disk(4))
+
+        else:
+            # get cluster masks
+            seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
+
+            # version adjestments
+            if ver == 0:
+                # do nothing with edges
+                seg_mask_edge = seg_mask
+            elif ver == 1:
+                # set edges as background
+                seg_mask_edge = seg_mask & (edges == 0)
         
         seg_mask_edge = label(seg_mask_edge, connectivity=1)
         for seg_idx in np.unique(seg_mask_edge):
@@ -334,6 +343,6 @@ class CoNSeP_cropped(torch.utils.data.Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    for i in range(2):
-        gen_pseudo_masks(dataset='MoNuSeg', split='train', ver=i, itr=0, contain_both=True)
-        gen_pseudo_masks(dataset='MoNuSeg', split='test', ver=i, itr=0, contain_both=True)
+    for i in range(3, 4):
+        gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
+        gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)
