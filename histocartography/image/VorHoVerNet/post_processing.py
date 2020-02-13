@@ -562,7 +562,7 @@ def improve_pseudo_labels(image, current_seg_mask, point_mask, preds, h=DEFAULT_
                 connected_components = label(labeled_curr_seg == curr_cc_on_idx)
                 cc_on_idx = connected_components[point_label == idx][0]
                 new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
-                new_seg = new_seg | (connected_components == cc_on_idx)
+                # new_seg = new_seg | (connected_components == cc_on_idx)
 
         base = new_seg.max()
         for idx in np.unique(new_seg):
@@ -575,6 +575,51 @@ def improve_pseudo_labels(image, current_seg_mask, point_mask, preds, h=DEFAULT_
                 new_seg[seg] = seg_cell[seg]
 
         new_seg = label(new_seg)
+        new_cell = new_seg
+        new_seg = new_cell > 0
+
+    elif method == 'variance':
+        new_seg = np.zeros_like(pred_seg).astype(int)
+        labeled_pred_seg = _get_instance_output(pred_seg, pred_hor, pred_vet, h=h, k=k)
+        if len(preds) == 4:
+            pred_dot = preds[-1]
+            labeled_pred_seg = _refine_instance_output(image, labeled_pred_seg, pred_dot, h=h, strong_discard=strong_discard)
+        
+        point_label = label(point_mask)
+
+        # make all instance in pred cover only one point
+        base = labeled_pred_seg.max()
+        for idx in np.unique(labeled_pred_seg):
+            seg = labeled_pred_seg == idx
+            if np.count_nonzero(seg & point_mask) > 1:
+                seg_cell = watershed(seg, markers=point_label, mask=seg)
+                step = seg_cell.max()
+                seg_cell[seg_cell > 0] += base
+                base += step
+                labeled_pred_seg[seg] = seg_cell[seg]
+        labeled_pred_seg = label(labeled_pred_seg)
+
+        # choose pred or curr with smaller variance
+        # if a point is not covered by pred, choose curr
+        image = image.astype(np.float64)
+        labeled_curr_seg = np.where(current_seg_mask, color_map, 0)
+        MAX_POINT_IDX = int(point_label.max())
+        for idx in range(1, MAX_POINT_IDX + 1):
+            curr_cc_on_idx = labeled_curr_seg[point_label == idx][0]
+            assert curr_cc_on_idx != 0, "current segmentation mask should cover all points."
+            connected_components = label(labeled_curr_seg == curr_cc_on_idx)
+            cc_on_idx = connected_components[point_label == idx][0]
+            curr_var = np.var(image[(connected_components == cc_on_idx) & (new_seg == 0)], axis=0).mean()
+
+            pred_cc_on_idx = labeled_pred_seg[point_label == idx][0]
+            if pred_cc_on_idx != 0:
+                pred_var = np.var(image[labeled_pred_seg == pred_cc_on_idx], axis=0).mean()
+                if pred_var < curr_var:
+                    new_seg[labeled_pred_seg == pred_cc_on_idx] = idx
+                    continue
+
+            new_seg[(connected_components == cc_on_idx) & (new_seg == 0)] = idx
+            
         new_cell = new_seg
         new_seg = new_cell > 0
     else:
