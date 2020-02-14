@@ -202,7 +202,7 @@ class CusBrontes(Brontes):
         if self.current_epoch == 0 and idx == 0 and self.load_pretrained and mode == 'train':
             npz = np.load(self.pretrained_path)
             self.model.load_pretrained(npz, print_name=False)
-            # print('load pretrained', idx)
+            print('load pretrained', idx)
         # print(self.state_dict()['model.encoder.group0.0.conv2.weight'][5][0][1:3])
 
         img, gts = batch

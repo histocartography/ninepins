@@ -13,7 +13,7 @@ import pytorch_lightning as pl
 
 # from torch.utils.data import DataLoader
 # from torch.utils.data.dataset import random_split
-from histocartography.image.VorHoVerNet.dataset import data_reader, CoNSeP_cropped, AugmentedDataset, dataset_numpy_to_tensor
+from histocartography.image.VorHoVerNet.dataset import data_reader, CoNSeP_cropped, AugmentedDataset, dataset_numpy_to_tensor, MixedDataset
 # from brontes import Brontes
 # from pl_net import plNet
 from histocartography.image.VorHoVerNet.cus_brontes import CusBrontes
@@ -100,6 +100,10 @@ parser.add_argument(
     '--pretrained_weights', type=str, default='../../histocartography/image/VorHoVerNet/savers/ImageNet-ResNet50-Preact.npz',
     help='output root path (default: ./)'
 )
+parser.add_argument(
+    '--data_mix_rate', type=float, default=1.0, metavar='N', 
+    help='training with how much propotion of pseudo labels (default: 1.0)'
+)
 # parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
 #                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
@@ -130,6 +134,9 @@ def main(args):
     OUTPUT_ROOT = f'{args.output_root}/{args.model_name}'
     LOAD_PRETRAINED = True if 't' in args.load_pretrained.lower() else False
     PRETRAINED_WEIGHTS = args.pretrained_weights
+    DATA_MIX_RATE = args.data_mix_rate
+
+    assert 0 <= DATA_MIX_RATE <= 1.0, f"data mixed rate must be between 0 and 1.0, got {DATA_MIX_RATE}"
 
     # EXPERIMENT_NAME = f'{MODEL_NAME}_iter{ITERATION:02d}'
     # INFERENCE_MODE = True if NUMBER_OF_WORKERS == 1 else False
@@ -205,7 +212,12 @@ def main(args):
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
     # train_data = AugmentedDataset(dataset=train_data, transform=augs_both, target_transform=augs_both)
-#     train_data = AugmentedDataset(dataset=train_data, transform=augs_image, target_transform=None)
+    # train_data = AugmentedDataset(dataset=train_data, transform=augs_image, target_transform=None)
+    
+    if DATA_MIX_RATE < 1.0:
+        train_data = MixedDataset(train_data, rate=DATA_MIX_RATE, channel_first=True)
+        valid_data = MixedDataset(valid_data, rate=DATA_MIX_RATE, channel_first=True)
+
     dataset_loaders = {
         'train': torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS), 
         'val': torch.utils.data.DataLoader(valid_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS)

@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+from random import sample
 from skimage.io import imread, imsave
 from skimage.morphology import binary_dilation, disk, label
 # from torch.utils.data import Dataset
@@ -224,6 +225,56 @@ def dataset_numpy_to_tensor(dataset, batch_size=8):
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     return torch.from_numpy(new_imgs).to(device), torch.from_numpy(new_gts).to(device)
 
+class MixedDataset(torch.utils.data.Dataset):
+    """
+    Mixed dataset of pseudo and true labels.
+
+    Args:
+        dataset (torch.utils.data.Dataset): cropped target dataset, better be shuffled
+        rate (float): rate of PSEUDO labels
+    """
+    def __init__(self, dataset, rate=1.0, channel_first=True):
+        self.dataset = dataset
+        self.rate = rate
+        self.channel_first = channel_first
+
+        self.mixed_images = []
+        self.mixed_labels = []
+
+        # check input
+        _channels = 7
+        self.t_ch = 0 if self.channel_first else -1
+        assert self.dataset[0][1].shape[self.t_ch] == 7, f"label channel should be greater than {_channels}, got {self.dataset[0][1].shape[self.t_ch]}"
+        assert 0 <= self.rate <= 1.0, f"rate must be between 0 and 1.0, got {self.rate}"
+
+        self.mix()
+
+    def mix(self):
+        len_ = len(self.dataset)
+        true_num = int(len_ * (1 - self.rate))
+        true_idx = sample(range(len_), true_num)
+
+        # if self.rate < 1.0:
+        print(f"Mixing dataset ({self.rate * 100}% pseudo labels)...")
+        for i, (images, labels) in enumerate(self.dataset):
+            if i in true_idx:
+                # split into 3, 1, 3 channels, mix and restruct
+                pseudo, point, full = np.split(labels, (3, 4),  axis=self.t_ch)
+                new_labels = np.concatenate((full, point, pseudo), axis=self.t_ch)
+                self.mixed_labels.append(new_labels) 
+            else:
+                self.mixed_labels.append(labels)
+            self.mixed_images.append(images)
+
+    # def shape(self):
+    #     pass
+
+    def __getitem__(self, index):
+        return self.mixed_images[index], self.mixed_labels[index]
+    
+    def __len__(self):
+        return len(self.mixed_images)
+    
 
 class AugmentedDataset(torch.utils.data.Dataset):
     """
