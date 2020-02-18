@@ -262,7 +262,7 @@ def main(args):
     from pytorch_lightning.callbacks import ModelCheckpoint
     checkpoint_callback = ModelCheckpoint(
         filepath=f'{OUTPUT_ROOT}/checkpoints',
-        save_top_k=3,
+        save_top_k=1,
         verbose=VERBOSE,
         monitor=EARLY_STOP_MONITOR,
         mode='min',
