@@ -107,7 +107,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
         if ver < 4:
             point_mask = data_reader.read_points(i, split)
         else:
-            point_mask = get_random_shifted_point_from_instance(lab, 0.8)
+            point_mask = get_random_shifted_point_from_instance(lab, 0.8, binary=True)
         
         # get dot masks
         dot_mask = binary_dilation(point_mask, selem=disk(2))
