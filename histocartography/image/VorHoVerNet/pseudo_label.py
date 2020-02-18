@@ -1,14 +1,14 @@
 import numpy as np
 from skimage.morphology import binary_dilation, dilation, disk, label
 import histocartography.image.VorHoVerNet.color_label as color_label
-from histocartography.image.VorHoVerNet.color_label import get_cluster_label
+from histocartography.image.VorHoVerNet.color_label import get_cluster_label, get_growing_label
 from histocartography.image.VorHoVerNet.performance import OutTime
 from histocartography.image.VorHoVerNet.utils import (draw_boundaries,
                                                     get_point_from_instance)
 from histocartography.image.VorHoVerNet.Voronoi_label import get_voronoi_edges
 
 
-def gen_pseudo_label(image, point_mask, return_edge=False, k=3, features=None):
+def gen_pseudo_label(image, point_mask, return_edge=False, features=None, v2=False, **kwargs):
     """
     Generate pseudo label from image and instance label.
     1. Generate distance based label.
@@ -32,7 +32,12 @@ def gen_pseudo_label(image, point_mask, return_edge=False, k=3, features=None):
     out_dict = {}
 
     distance_based_label = get_voronoi_edges(point_mask, extra_out=out_dict)
-    color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label, k=k)
+    if v2:
+        kwargs = {k: v for k, v in kwargs.items() if k in ['p', 'threshold']}
+        color_based_label = get_growing_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label, **kwargs)
+    else:
+        kwargs = {k: v for k, v in kwargs.items() if k in ['k']}
+        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], distance_based_label, **kwargs)
 
     nuclei = (color_based_label == [0, 255, 0]).all(axis=2)
 

@@ -1,11 +1,12 @@
 import multiprocessing as mp
 import numpy as np
+from collections import deque
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage.color import rgb2hed
 from skimage.morphology import *
 from sklearn.cluster import KMeans
 from histocartography.image.VorHoVerNet.performance import OutTime
-from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient, show
+from histocartography.image.VorHoVerNet.utils import Cascade, draw_boundaries, get_point_from_instance, get_gradient, show, neighbors
 
 CLUSTER_FEATURES = "C"
 # C: rgb, D: distance, S: he
@@ -21,10 +22,47 @@ def get_cluster_label(image, distance_map, point_mask, cells, edges, k=3):
         edges (numpy.ndarray[int]): voronoi edges. (255 indicates edge, 0 indicates background)
     """
     clusters = get_clusters(image, distance_map, k=k)
-    from skimage.io import imsave
+    # from skimage.io import imsave
     nuclear_index, background_index = find_nuclear_cluster(image, clusters, point_mask)
     # imsave("test cases/cluster.png", np.where(clusters == nuclear_index, 255, 0).astype("uint8"))
     return refine_cluster(clusters == nuclear_index, clusters == background_index, cells, point_mask, edges)
+
+def lp_norm(a, b, p):
+    """
+    Compute color-based label from original image, distance map, and point mask.
+    Args:
+        a (numpy.ndarray[any]): a 1d-vector.
+        b (numpy.ndarray[any]): a 1d-vector.
+        p (int): power of l-p norm.
+    Returns:
+        lp_norm (float)
+    """
+    return np.sum((a - b) ** (p)) ** (1/p)
+
+def get_growing_label(image, distance_map, point_mask, cells, edges, threshold=0.5, p=2):
+    features = get_features(image, distance_map)
+    shape = image.shape
+
+    Q = deque()
+
+    markers = label(point_mask)
+    for y, x in np.argwhere(point_mask):
+        Q.append((markers[y, x], features[y, x], y, x))
+    MAX_ITER = 1e06
+    i = 0
+    while Q:
+        if i >= MAX_ITER:
+            print("too many iterations in region growing, force exit...")
+            break
+        i += 1
+        idx, f, y, x = Q.popleft()
+        for yy, xx in neighbors(shape, (y, x)):
+            # print(lp_norm(f, features[yy, xx], p))
+            if (markers[yy, xx] == 0) and (lp_norm(f, features[yy, xx], p) < threshold):
+                markers[yy, xx] = idx
+                Q.append((idx, features[yy, xx], yy, xx))
+
+    return np.where(np.repeat((markers > 0)[..., None], 3, axis=-1), [0, 255, 0], [0, 0, 0])
 
 def concat_normalize(*features):
     """
@@ -153,8 +191,14 @@ def main():
                         help="split of the dataset ([test, train])")
     parser.add_argument("-d", "--dataset", default="CoNSeP", choices=["CoNSeP", "MoNuSeg"],
                         help="dataset ([CoNSeP, MoNuSeg])")
+    parser.add_argument("-g", "--region-growing", default=False, action="store_true",
+                        help="use region growing")
     parser.add_argument("-k", "--num-clusters", default=3, type=int,
                         help="number of clusters")
+    parser.add_argument("-p", "--num-power", default=2, type=int,
+                        help="number of power")
+    parser.add_argument("-t", "--threshold", default=0.5, type=float,
+                        help="threshold of feature distance")
     args = parser.parse_args()
 
     global CLUSTER_FEATURES
@@ -164,6 +208,10 @@ def main():
     IDX = args.index
     SPLIT = args.split
     EXP_NAME = args.name
+    GROWING = args.region_growing
+    NUM_CLUSTERS = args.num_clusters
+    NUM_POWER = args.num_power
+    THRESHOLD = args.threshold
 
     dataset = getattr(dataset_reader, args.dataset)(download=False)
     image = dataset.read_image(IDX, SPLIT)
@@ -176,7 +224,10 @@ def main():
     edges = get_voronoi_edges(point_mask, extra_out=out_dict)
 
     with OutTime():
-        color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=args.num_clusters)
+        if GROWING:
+            color_based_label = get_growing_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, threshold=THRESHOLD, p=NUM_POWER)
+        else:
+            color_based_label = get_cluster_label(image, out_dict["dist_map"], point_mask, out_dict["Voronoi_cell"], edges, k=NUM_CLUSTERS)
 
     mask = (color_based_label == [0, 255, 0]).all(axis=2)
     draw_boundaries(image, mask)

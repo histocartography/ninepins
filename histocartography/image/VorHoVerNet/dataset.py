@@ -6,7 +6,7 @@ from skimage.morphology import binary_dilation, disk, label
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
-from histocartography.image.VorHoVerNet.utils import get_point_from_instance
+from histocartography.image.VorHoVerNet.utils import get_point_from_instance, get_random_shifted_point_from_instance
 
 
 def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
@@ -103,7 +103,11 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
         
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
-        point_mask = data_reader.read_points(i, split)
+
+        if ver < 4:
+            point_mask = data_reader.read_points(i, split)
+        else:
+            point_mask = get_random_shifted_point_from_instance(lab, 0.8)
         
         # get dot masks
         dot_mask = binary_dilation(point_mask, selem=disk(2))
@@ -125,7 +129,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
             if ver == 0:
                 # do nothing with edges
                 seg_mask_edge = seg_mask
-            elif ver == 1:
+            else: # ver == 1 or ver >= 4
                 # set edges as background
                 seg_mask_edge = seg_mask & (edges == 0)
         
