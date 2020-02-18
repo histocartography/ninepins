@@ -64,9 +64,10 @@ def gen_pseudo_label(image, point_mask, return_edge=False, features=None, v2=Fal
 
 if __name__ == "__main__":
     from dataset_reader import CoNSeP
+    from skimage.filters import gaussian
     from argparse import ArgumentParser
 
-    parser = ArgumentParser(description="Cluster Label Generator (Experiment)")
+    parser = ArgumentParser(description="Pseudo Label Generator (Experiment)")
     parser.add_argument("-n", "--name", default="test",
                         help="experiment name")
     parser.add_argument("-i", "--index", default=4, type=int,

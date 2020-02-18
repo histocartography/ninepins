@@ -45,22 +45,40 @@ def get_growing_label(image, distance_map, point_mask, cells, edges, threshold=0
 
     Q = deque()
 
+    point_mask = binary_dilation(point_mask, disk(5))
+
     markers = label(point_mask)
-    for y, x in np.argwhere(point_mask):
-        Q.append((markers[y, x], features[y, x], y, x))
+
+    MAX_IDX = markers.max()
+
+    group_means = [0] * MAX_IDX
+    group_num = [0] * MAX_IDX
+
+    for IDX in range(MAX_IDX):
+        nucleus = markers == (IDX + 1)
+        group_means[IDX] = features[nucleus].mean()
+        group_num[IDX] = np.count_nonzero(nucleus)
+        for y, x in np.argwhere(nucleus):
+            Q.append((IDX + 1, group_means[IDX], group_num[IDX], y, x))
     MAX_ITER = 1e06
-    i = 0
+    i = sum(group_num)
     while Q:
         if i >= MAX_ITER:
             print("too many iterations in region growing, force exit...")
             break
         i += 1
-        idx, f, y, x = Q.popleft()
+        idx, fm, n, y, x = Q.popleft()
         for yy, xx in neighbors(shape, (y, x)):
             # print(lp_norm(f, features[yy, xx], p))
-            if (markers[yy, xx] == 0) and (lp_norm(f, features[yy, xx], p) < threshold):
+            if (markers[yy, xx] == 0) and (lp_norm(fm, features[yy, xx], p) < threshold):
                 markers[yy, xx] = idx
-                Q.append((idx, features[yy, xx], yy, xx))
+                new_mean = (fm * n + features[yy, xx]) / (n + 1)
+                Q.append((idx, new_mean, n + 1, yy, xx))
+
+    from skimage.io import imsave
+    from skimage.color import label2rgb
+
+    imsave("markers.png", (label2rgb(markers, bg_label=0) * 255).astype(np.uint8))
 
     return np.where(np.repeat((markers > 0)[..., None], 3, axis=-1), [0, 255, 0], [0, 0, 0])
 
@@ -119,7 +137,7 @@ def get_features(image, distance_map):
         if cluster_feature == 'D':
             features.append((np.clip(distance_map, a_min=0, a_max=20), 1))
         if cluster_feature == 'S':
-            feature = get_gradient(rgb2hed(image)[..., 0] * 255)
+            feature = rgb2hed(image)[..., 0] * 255
             M, m = feature.max(), feature.min()
             features.append((feature - m, (M - m) / 20))
     features = concat_normalize(*features)
