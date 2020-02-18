@@ -30,7 +30,6 @@ void initializePermutohedral(const float * image, int img_w, int img_h, float si
 
 Tensor crfloss_forward(const Tensor input, const Tensor image, float sigma_xy, float sigma_rgb)
 {
-    cout << "hahaha";
     IntArrayRef size = input.sizes();  // size of input tensor, BxCxHxW expected
     int64_t batch = size[0];    // number of images in a batch
     int64_t height = size[2];    // height of an image
