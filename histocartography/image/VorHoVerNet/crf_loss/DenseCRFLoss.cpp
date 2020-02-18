@@ -48,9 +48,9 @@ Tensor crfloss_forward(const Tensor input, const Tensor image, float sigma_xy, f
         auto mask_b = 1 - ((image[b][0] < 1e-5) * (image[b][1] < 1e-5) * (image[b][2] < 1e-5)).to(torch::kFloat32);
 
         // compute DenseCRFloss for current image
-        auto prob_map = mask_b * input[b][1].to(torch::kFloat32);
+        auto prob_map = mask_b * input[b][0].to(torch::kFloat32);
         lattice_b.compute(WS[b].data_ptr<float>(), prob_map.data_ptr<float>(), 1);
-        losses[b] = ((1-input[b][1].to(torch::kFloat32)) * mask_b * WS[b]).sum() / mask_b.sum();   //  SW(1-S)
+        losses[b] = ((1-input[b][0].to(torch::kFloat32)) * mask_b * WS[b]).sum() / mask_b.sum();   //  SW(1-S)
 
     }
     auto loss = losses.mean();
@@ -75,11 +75,10 @@ Tensor crfloss_backward(Tensor grad_output, const Tensor input, const Tensor ima
         Permutohedral lattice_b;
         initializePermutohedral(image_b, width, height, sigma_rgb, sigma_xy, lattice_b);
 
-        auto mask_b = (1 - (image[b][0] < 1e-5) * (image[b][1] < 1e-5) * (image[b][2] < 1e-5)).to(torch::kFloat32);
-        auto tmp_S = mask_b * (1 - 2 * input[b][1].to(torch::kFloat32));    // W(1-2S)
-        lattice_b.compute(grad_input[b][1].data_ptr<float>(), tmp_S.data_ptr<float>(), 1);
-        grad_input[b][1] = grad_input[b][1] * mask_b / mask_b.sum();
-        grad_input[b][0] = - grad_input[b][1];
+        auto mask_b = 1 - ((image[b][0] < 1e-5) * (image[b][1] < 1e-5) * (image[b][2] < 1e-5)).to(torch::kFloat32);
+        auto tmp_S = mask_b * (1 - 2 * input[b][0].to(torch::kFloat32));    // W(1-2S)
+        lattice_b.compute(grad_input[b][0].data_ptr<float>(), tmp_S.data_ptr<float>(), 1);
+        grad_input[b][0] = grad_input[b][0] * mask_b / mask_b.sum();
     }
 
     grad_input = grad_input * grad_output / batch;

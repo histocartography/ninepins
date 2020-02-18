@@ -35,7 +35,6 @@ class CRFLoss(nn.Module):
 
     def forward(self, input, image):
         output = CRFLossFunction.apply(input, image)
-        print("lalala")
         return output
 
     def _get_name(self):

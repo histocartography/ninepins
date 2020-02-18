@@ -93,7 +93,7 @@ class CustomLoss(nn.Module):
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # crfloss
-        crf = self.crfloss(pred_seg.cpu(), image.detach().clone().data.cpu())
+        crf = self.crfloss(pred_seg.permute(0, 3, 1, 2).cpu(), Net.crop_op(image.detach().clone().data.cpu(), (190, 190))).cuda()
         # masked binary cross entropy loss
         mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
         # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
@@ -440,7 +440,8 @@ class Net(nn.Module):
 
     #     return encoded_indicies
 
-    def crop_op(self, x, cropping, data_format='channels_first'):
+    @staticmethod
+    def crop_op(x, cropping, data_format='channels_first'):
         """
         Center crop image
         Args:
