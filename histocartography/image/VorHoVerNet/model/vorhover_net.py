@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from histocartography.image.VorHoVerNet.crf_loss.crfloss import CRFLoss
 
 
 # TODO(@hun): whether add PseudoEdgeNet concept or not
@@ -23,11 +24,12 @@ from torch.autograd import Variable
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 1, 1, 2, 1, 3]):
-        # 'bce', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
+    def __init__(self, weights=[1, 2, 1, 1, 2, 1, 3]):
+        # 'bce', 'crf', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
 #         self.weights = self.weights / sum(self.weights)
+        self.crfloss = CRFLoss(10.0, 10.0/255)
     
     @staticmethod
     def dice_loss(pred, gt, epsilon=1e-3):
@@ -82,7 +84,7 @@ class CustomLoss(nn.Module):
         return F.mse_loss(pred_grad, gt_grad)
         # return loss
 
-    def forward(self, preds, gts, contain='single'):
+    def forward(self, preds, gts, image, contain='single'):
         # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
         gt_seg, gt_hv, gt_dot = torch.split(gts[..., :4], [1, 2, 1], dim=-1)
@@ -90,6 +92,8 @@ class CustomLoss(nn.Module):
 
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
+        # crfloss
+        crf = self.crfloss(pred_seg, image)
         # masked binary cross entropy loss
         mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
         # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
@@ -101,13 +105,13 @@ class CustomLoss(nn.Module):
         # mean square error for dot and distance maps
         ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         
-        loss = bce * self.weights[0] + mbce * self.weights[1] + dice * self.weights[2] + mse * self.weights[3] + msge * self.weights[4] + ddmse * self.weights[5]
+        loss = bce * self.weights[0] + crf * self.weights[1] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
 
         if contain == 'single':
             return loss
         
-        names = ('loss', 'bce', 'mbce', 'dice', 'mse', 'msge', 'ddmse')
-        losses = [loss, bce, mbce, dice, mse, msge, ddmse]
+        names = ('loss', 'crf', 'bce', 'mbce', 'dice', 'mse', 'msge', 'ddmse')
+        losses = [loss, crf, bce, mbce, dice, mse, msge, ddmse]
         # if prefix is not None:
         #     names = ['{}_{}'.format(prefix, n) for n in names]
         return {name: loss for name, loss in zip(names, losses)}

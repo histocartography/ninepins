@@ -1,4 +1,5 @@
 import os
+import sys
 # import time
 import torch
 # import random
@@ -79,6 +80,9 @@ class CusBrontes(Brontes):
         # self.inf_batch_train, self.inf_batch_valid = None, None
         self.inf_type = ('train', 'valid')
 
+        # inner settings
+        self.unfreeze_at = 14
+
         self.check_params()
 
     def forward(self, x):
@@ -96,10 +100,12 @@ class CusBrontes(Brontes):
                 return
             self.figpath = f'{self.output_root}/visualize'
             os.makedirs(self.figpath, exist_ok=True)
-            print('\tinference image dir: {}'.format(self.figpath))
+            print(f'\tinference image dir: {self.figpath}')
         if self.load_pretrained:
             assert self.pretrained_path is not None, "got nothing from pretrained path"
             print(f'\tload pretrained weights from {self.pretrained_path}')
+        if self.unfreeze_at is not None:
+            print(f'\tfreeze part of model before {self.unfreeze_at}th epoch')
 
             # reminders
             # if self.num_gpus > 1:
@@ -112,9 +118,9 @@ class CusBrontes(Brontes):
             preds = self.model(imgs)
 
             # transpose and reshape
-            imgs = imgs.permute(0, 2, 3, 1).detach().cpu().numpy()
-            gts = gts.permute(0, 2, 3, 1).detach().cpu().numpy()
-            preds = preds.detach().cpu().numpy()
+            imgs = imgs.permute(0, 2, 3, 1).data().cpu().numpy()
+            gts = gts.permute(0, 2, 3, 1).data().cpu().numpy()
+            preds = preds.data().cpu().numpy()
 
             fig, ax = plt.subplots(4, 5, figsize=(12, 9))
             gap = (psize - vsize) // 2 if gap is None else gap
@@ -199,42 +205,52 @@ class CusBrontes(Brontes):
             mlflow.log_param('existing models', 'No checkpoint saved yet.')
 
     def training_step(self, batch, idx, mode='train', contain='all'):
-        if self.current_epoch == 0 and idx == 0 and self.load_pretrained and mode == 'train':
-            npz = np.load(self.pretrained_path)
-            self.model.load_pretrained(npz, print_name=False)
-            print('load pretrained', idx)
-        # print(self.state_dict()['model.encoder.group0.0.conv2.weight'][5][0][1:3])
+        if idx == 0 and mode == 'train':
+            for iii, p in enumerate(self.model.parameters()):
+                print(iii, p.requires_grad)
+            # exit()
+            # for pg in self.optimizers.param_groups:
+            #     print(pg['lr'])
+            # print(self.lr_scheduler.get_lr()[0])
+            # print(next(self.model.encoder.parameters()).requires_grad)
+            if self.current_epoch == 0:
+                if self.load_pretrained:
+                    npz = np.load(self.pretrained_path)
+                    self.model.load_pretrained(npz, print_name=False)
+                    print('load pretrained', idx)
+                # if self.unfreeze_at is not None:
+                    # self.set_grad(self.model.conv0, False)
+                    # self.set_grad(self.model.encoder, False)
+            if self.current_epoch == self.unfreeze_at:
+                # self.set_grad(self.model.conv0, True)
+                # self.set_grad(self.model.encoder, True)
+                self.optimizers.add_paramgroups
+        
+        # print(self.optimizers.param_groups[0]['lr'])
+        # print(next(self.model.encoder.parameters()).requires_grad)
+        # next(self.model.encoder.parameters()).requires_grad = False
+        # self.set_grad(self.model.encoder, False)
+        # print(next(self.model.encoder.parameters()).requires_grad)
+        # exit()
 
         img, gts = batch
         preds = self.forward(img)
 
         # training_dict = {}
         # training_dict['loss'] = self.loss(preds, gts)
-        training_dict = self.loss(preds, gts, contain=contain)
+        training_dict = self.loss(preds, gts, img, contain=contain)
         for name, metric in self.metrics.items():
             training_dict[name] = metric(preds, gts)
-        
-        # if mode == "train":
-            # log info
-#             print(idx, training_dict)
-#             if idx % self.training_log_interval == 0:
-#                 self.tracker.log_tensor_dict(
-#                     training_dict, step=self.training_step_count
-#                 )
-#             self.training_step_count += 1
+
         return training_dict
 
-    def training_end(self, outputs):
-        if self.num_gpus == 1:
-            return outputs
+    def training_end(self, outputs): 
         training_dict = {
             f'{name}': value.mean() for name, value in outputs.items()
-        }
+        } if self.num_gpus > 1 else outputs
 
         if self.training_end_count % self.training_log_interval == 0:
-            self.tracker.log_tensor_dict(
-                training_dict, step=self.training_step_count
-            )
+            self.tracker.log_tensor_dict(training_dict, step=self.training_step_count)
             self.training_step_count += 1
         self.training_end_count += 1
 
@@ -243,7 +259,6 @@ class CusBrontes(Brontes):
 
         return training_dict
         
-    
     def validation_step(self, batch, idx):
         # img, gts = batch
         # preds = self.forward(img)
@@ -251,9 +266,7 @@ class CusBrontes(Brontes):
         validation_dict = {
             f'val_{name}': value for name, value in self.training_step(batch, idx, mode='valid', contain='all').items()
         }
-        self.tracker.log_tensor_dict(
-            validation_dict, step=self.validation_step_count
-        )
+        self.tracker.log_tensor_dict(validation_dict, step=self.validation_step_count)
         self.validation_step_count += 1
 
         # prepare for inference
@@ -275,9 +288,7 @@ class CusBrontes(Brontes):
         }
         # f'avg_{name}': torch.stack([x[name] for x in outputs]).mean() for name in names
         # f'avg_{name}': torch.stack([x[name] for x in outputs if len(x) == (self.batchsize // self.num_gpus)]).mean() for name in names
-        self.tracker.log_tensor_dict(
-            validation_end_dict, step=self.validation_end_count
-        )
+        self.tracker.log_tensor_dict(validation_end_dict, step=self.validation_end_count)
         self.validation_end_count += 1
 
         if self.current_epoch >= self.start_epoch and self.training_started:
@@ -297,8 +308,9 @@ class CusBrontes(Brontes):
         validation_end_dict['progress_bar'] = {'val_loss': validation_end_dict['avg_val_loss']}
         return validation_end_dict
 
-    def configure_optimizer(self):
-        return [self.optimizer], [self.lr_scheduler]
+    def configure_optimizers(self):
+        # 's' due to Brontes class
+        return [self.optimizers], [self.lr_scheduler]
 
     @pl.data_loader
     def train_dataloader(self):
@@ -307,3 +319,10 @@ class CusBrontes(Brontes):
     @pl.data_loader
     def val_dataloader(self):
         return self.data_loaders['val']
+
+    def set_grad(self, target, to):
+        for p in target.parameters():
+            print(p, p.requires_grad, type(p), p.shape)
+            p.requires_grad = to
+            # p.detach()
+        print(f"Set requires_grad of {type(target)} to {to}.")

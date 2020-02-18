@@ -349,3 +349,7 @@ def show(img, save_name=None, figure_settings={}, save_settings={}):
     if save_name is not None:
         plt.savefig(save_name, **save_settings)
     plt.show()
+
+def set_grad(target, to):
+    for p in target.parameters():
+        p.requires_grad = to

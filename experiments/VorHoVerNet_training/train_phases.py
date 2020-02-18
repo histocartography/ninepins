@@ -54,7 +54,7 @@ parser.add_argument(
     help='s3 bucket'
 )
 parser.add_argument(
-    '-p', '--number_of_workers', type=int, default='1', 
+    '-p', '--number_of_workers', type=int, default=-1, 
     help='number of workers (default: 1)'
 )
 parser.add_argument(
@@ -66,7 +66,7 @@ parser.add_argument(
     help='output root path (default: ./)'
 )
 parser.add_argument(
-    '--batch_size', type=int, default=16, metavar='N', 
+    '--batch_size', type=int, default=-1, metavar='N', 
     help='input batch size for training (default: 16)'
 )
 parser.add_argument(
@@ -74,7 +74,7 @@ parser.add_argument(
     help='input batch size for testing (default: 16)'
 )
 parser.add_argument(
-    '--epochs', type=int, default=10, metavar='N',
+    '--epochs', type=int, default=14, metavar='N',
     help='number of epochs to train (default: 10)'
 )
 parser.add_argument(
@@ -208,7 +208,7 @@ def main(args):
 
     # prepare data_loaders
     train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
+    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=[1]))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -227,43 +227,22 @@ def main(args):
     inf_batch_train = dataset_numpy_to_tensor(train_data, batch_size=BATCH_SIZE)
     inf_batch_valid = dataset_numpy_to_tensor(valid_data, batch_size=BATCH_SIZE)
 
+
     # define model and optimizer
     model = Net(batch_size=BATCH_SIZE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    # set_grad(model.encoder, False)
-    # for p in model.parameters():
-    #     print(p.requires_grad)
-    # exit()
-    # optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=LEARNING_RATE)
-    # print(LEARNING_RATE)
-    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
-    # MAX_EPOCH = 28
-    # lr_lambda = lambda epoch: [1, 0.1, 1, 0.1][(epoch - 1)//1]
-    # def lr_rt(epoch):
-    #     new_lr = (1, 0.1, 1, 0.1)[epoch + 1]
-    #     print(f'current epoch: {epoch + 1}, current learning rate {new_lr}')
-    #     return new_lr
-    # lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
 
-    # print(model.state_dict()['encoder.group0.0.conv2.weight'][5][0][1:3])
-    # if LOAD_PRETRAINED:
-    #     print(f"Loading pretrained weights from {PRETRAINED_WEIGHTS}")
-    #     npz = np.load(PRETRAINED_WEIGHTS)
-    #     model.load_pretrained(npz, print_name=False)
-        # required_dict = {
-        #     'early_stop_callback_patience': EARLY_STOP_PATIENCE,
-        #     'optimizer_states': optimizer.state_dict(), 
-        #     'lr_schedulers': lr_scheduler,
-        #     'early_stop_callback_wait': 0,
-        #     'checkpoint_callback_best': 0.5,
-        #     'epoch': 0,
-        #     'global_step': 0
-        # }
-        # model.load_save_pretrained(npz, required_dict, output_path=f'{OUTPUT_ROOT}/checkpoints')
+    # phase 1 (freeze pretrained weights)
+    set_grad(model.conv0, False)
+    set_grad(model.encoder, False)
+    optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=LEARNING_RATE)
     
-    # print(model.state_dict()['encoder.group0.0.conv2.weight'][5][0][1:3])
-
+    # lr_lambda = lambda epoch: [1, 0.1, 1, 0.1][(epoch - 1)//1]
+    def lr_rt(epoch, step=7):
+        e = epoch if epoch == 0 else epoch + 1
+        new_lr = (1, 0.1, 1, 0.1)[e//step]
+        print(f'current epoch: {e}, current learning rate {new_lr}')
+        return new_lr
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
 
     cbrontes_model = CusBrontes(
         model=model,
@@ -312,7 +291,7 @@ def main(args):
                 accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
                 default_save_path=f'{OUTPUT_ROOT}/pl_logs',
                 checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
-                distributed_backend='dp', 
+                distributed_backend='dp', max_epochs=MAX_EPOCH, 
                 train_percent_check=1.0, val_percent_check=1.0)
                 # , val_check_interval=0.25
         else:
