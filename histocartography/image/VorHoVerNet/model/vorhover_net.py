@@ -93,7 +93,7 @@ class CustomLoss(nn.Module):
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # crfloss
-        crf = self.crfloss(pred_seg, image)
+        crf = self.crfloss(pred_seg.cpu(), image.detach().clone().data.cpu())
         # masked binary cross entropy loss
         mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
         # mbce = F.binary_cross_entropy(pred_dot, gt_dot)

@@ -30,6 +30,7 @@ void initializePermutohedral(const float * image, int img_w, int img_h, float si
 
 Tensor crfloss_forward(const Tensor input, const Tensor image, float sigma_xy, float sigma_rgb)
 {
+    cout << "hahaha";
     IntArrayRef size = input.sizes();  // size of input tensor, BxCxHxW expected
     int64_t batch = size[0];    // number of images in a batch
     int64_t height = size[2];    // height of an image
@@ -45,7 +46,7 @@ Tensor crfloss_forward(const Tensor input, const Tensor image, float sigma_xy, f
         Permutohedral lattice_b;
         initializePermutohedral(image_b, width, height, sigma_rgb, sigma_xy, lattice_b);
 
-        auto mask_b = (1 - (image[b][0] < 1e-5) * (image[b][1] < 1e-5) * (image[b][2] < 1e-5)).to(torch::kFloat32);
+        auto mask_b = 1 - ((image[b][0] < 1e-5) * (image[b][1] < 1e-5) * (image[b][2] < 1e-5)).to(torch::kFloat32);
 
         // compute DenseCRFloss for current image
         auto prob_map = mask_b * input[b][1].to(torch::kFloat32);

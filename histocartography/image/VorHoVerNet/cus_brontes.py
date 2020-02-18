@@ -221,10 +221,10 @@ class CusBrontes(Brontes):
                 # if self.unfreeze_at is not None:
                     # self.set_grad(self.model.conv0, False)
                     # self.set_grad(self.model.encoder, False)
-            if self.current_epoch == self.unfreeze_at:
+            # if self.current_epoch == self.unfreeze_at:
                 # self.set_grad(self.model.conv0, True)
                 # self.set_grad(self.model.encoder, True)
-                self.optimizers.add_paramgroups
+                # self.optimizers.add_paramgroups
         
         # print(self.optimizers.param_groups[0]['lr'])
         # print(next(self.model.encoder.parameters()).requires_grad)
