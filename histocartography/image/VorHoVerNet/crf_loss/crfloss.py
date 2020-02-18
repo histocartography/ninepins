@@ -11,19 +11,19 @@ import crfloss_cpp
 
 
 class CRFLossFunction(Function):
-    def __init__(self, sigma_xy=15.0, sigma_rgb=0.125):
-        super(CRFLossFunction, self).__init__()
-        self.sigma_xy = sigma_xy
-        self.sigma_rgb = sigma_rgb
 
-    def forward(self, input, image):
-        loss = crfloss_cpp.forward(input, image.float(), self.sigma_xy, self.sigma_rgb)
-        self.save_for_backward(input, image)
+    @staticmethod
+    def forward(ctx, input, image, sigma_xy=15.0, sigma_rgb=0.125):
+        loss = crfloss_cpp.forward(input, image.float(), sigma_xy, sigma_rgb)
+        ctx.save_for_backward(input, image)
+        ctx.sigma_xy = sigma_xy
+        ctx.sigma_rgb = sigma_rgb
         return loss
 
-    def backward(self, grad_output):
-        input, image = self.saved_variables
-        grad_input = crfloss_cpp.backward(grad_output, input, image.float(), self.sigma_xy, self.sigma_rgb)
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, image = ctx.saved_tensors
+        grad_input = crfloss_cpp.backward(grad_output, input, image.float(), ctx.sigma_xy, ctx.sigma_rgb)
         return grad_input, None
 
 
@@ -34,7 +34,7 @@ class CRFLoss(nn.Module):
         self.sigma_rgb = sigma_rgb
 
     def forward(self, input, image):
-        output = CRFLossFunction(self.sigma_xy, self.sigma_rgb)(input, image)
+        output = CRFLossFunction.apply(input, image, self.sigma_xy, self.sigma_rgb)
         return output
 
     def _get_name(self):
