@@ -69,16 +69,10 @@ def image_to_save(im):
 def neighbors(shape, coord):
     h, w = shape[:2]
     y, x = coord
-    res = []
-    if y - 1 >= 0:
-        res.append((y-1, x))
-    if y + 1 < h:
-        res.append((y+1, x))
-    if x - 1 >= 0:
-        res.append((y, x-1))
-    if x + 1 < w:
-        res.append((y, x+1))
-    return res
+    if y - 1 >= 0: yield (y-1, x)
+    if y + 1 < h: yield (y+1, x)
+    if x - 1 >= 0: yield (y, x-1)
+    if x + 1 < w: yield (y, x+1)
 
 def BFS(map_, seed, tar_val):
     visited = np.zeros_like(map_).astype(bool)

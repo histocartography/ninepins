@@ -425,7 +425,7 @@ def SQ(output_map, label, stats=None):
         stats = nucleuswise_stats(output_map, label)
     sum_IOU = stats['sum_IOU']
     TP = stats['TP']
-    return sum_IOU / TP
+    return sum_IOU / TP if TP != 0 else 0
 
 def PQ(output_map, label, stats=None):
     if stats is None:

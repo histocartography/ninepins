@@ -4,11 +4,10 @@ import numpy as np
 from random import sample
 from skimage.io import imread, imsave
 from skimage.morphology import binary_dilation, disk, label
-# from torch.utils.data import Dataset
-from histocartography.image.VorHoVerNet.dataset_reader import *
+import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
-from histocartography.image.VorHoVerNet.utils import get_point_from_instance
+from histocartography.image.VorHoVerNet.utils import get_point_from_instance, get_random_shifted_point_from_instance
 
 
 def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
@@ -84,7 +83,7 @@ def get_pseudo_masks(seg_mask, point_mask, inst, contain_both=False):
         return pseudo_mask, full_mask
     return pseudo_mask
     
-def gen_pseudo_masks(data_reader, split='train', ver=0, itr=0, contain_both=False):
+def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
 
@@ -94,30 +93,46 @@ def gen_pseudo_masks(data_reader, split='train', ver=0, itr=0, contain_both=Fals
         contain_both (bool): if contain exhausted masks
     """
     
-    root = data_reader.root.split("/")[0]
+    dataset_class = getattr(dataset_reader, dataset)
+    data_reader = dataset_class(root=root, download=False, ver=ver) if root is not None else dataset_class(download=False, ver=ver)
     IDX_LIMITS = data_reader.IDX_LIMITS
+
+    root = data_reader.root.split("/")[0]
     
     for i in range(1, IDX_LIMITS[split] + 1):
         print(f'Generating {split}ing dataset (version {ver})... {i:02d}/{IDX_LIMITS[split]:02d}', end='\r')
         
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
-        point_mask = data_reader.read_points(i, split)
+
+        if ver < 4:
+            point_mask = data_reader.read_points(i, split)
+        else:
+            point_mask = get_random_shifted_point_from_instance(lab, 0.8, binary=True)
         
         # get dot masks
         dot_mask = binary_dilation(point_mask, selem=disk(2))
         dot_mask = np.expand_dims(dot_mask, axis=-1)
 
-        # get cluster masks
-        seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
+        if ver == 2:
+            # use true label
+            seg_mask_edge = lab > 0
 
-        # version adjestments
-        if ver == 0:
-            # do not thing with edges
-            seg_mask_edge = seg_mask
-        elif ver == 1:
-            # set edges as background
-            seg_mask_edge = seg_mask & (edges == 0)
+        elif ver == 3:
+            # use dilated point as label
+            seg_mask_edge = binary_dilation(point_mask, selem=disk(4))
+
+        else:
+            # get cluster masks
+            seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
+
+            # version adjestments
+            if ver == 0:
+                # do nothing with edges
+                seg_mask_edge = seg_mask
+            else: # ver == 1 or ver >= 4
+                # set edges as background
+                seg_mask_edge = seg_mask & (edges == 0)
         
         seg_mask_edge = label(seg_mask_edge, connectivity=1)
         for seg_idx in np.unique(seg_mask_edge):
@@ -155,7 +170,7 @@ def gen_pseudo_masks(data_reader, split='train', ver=0, itr=0, contain_both=Fals
             np.save(f'{path_full}/{split}_{i}.npy', full_mask)
     print('')
 
-def data_reader(root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None):
+def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None):
     """
     Return images and labels according to the type from split
 
@@ -173,7 +188,8 @@ def data_reader(root=None, split='train', channel_first=True, ver=0, itr=0, dofl
             images (numpy.ndarray)
             labels (numpy.ndarray)
     """
-    data_reader = CoNSeP(root=root, download=False, ver=ver) if root is not None else CoNSeP(download=False, ver=ver)
+    dataset_class = getattr(dataset_reader, dataset)
+    data_reader = dataset_class(root=root, download=False, ver=ver) if root is not None else dataset_class(download=False, ver=ver)
     IDX_LIMITS = data_reader.IDX_LIMITS
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
@@ -382,8 +398,6 @@ class CoNSeP_cropped(torch.utils.data.Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    dataset = CoNSeP(download=False)
-    # dataset = MoNuSeg(download=False)
-    for i in range(2):
-        gen_pseudo_masks(dataset, split='train', ver=i, itr=0, contain_both=True)
-        gen_pseudo_masks(dataset, split='test', ver=i, itr=0, contain_both=True)
+    for i in range(3, 4):
+        gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
+        gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)

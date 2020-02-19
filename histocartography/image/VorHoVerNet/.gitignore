@@ -14,6 +14,7 @@ savers/*
 *.pt
 *.pkl
 *.npy
+*.npz
 
 # test script
 
@@ -25,7 +26,9 @@ train.py
 compare.py
 inference.py
 dataset_iter.py
+hover.py
 no_gpu_need.lsf
 train.sh
 .set_environment_variables
 ta.py
+run_inference.py

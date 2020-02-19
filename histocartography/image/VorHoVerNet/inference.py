@@ -8,6 +8,7 @@ from histocartography.image.VorHoVerNet.dataset import CoNSeP_cropped, data_read
 from histocartography.image.VorHoVerNet.model.vorhover_net import CustomLoss, Net
 from histocartography.image.VorHoVerNet.utils import scale, shift_and_scale
 
+device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80):
     """
@@ -29,6 +30,8 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     fig, ax = plt.subplots(4, 5, figsize=(12, 9))
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
+        img = img.to(device)
+        gt = gt.to(device)
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
         filename = './inference/{}/patch{:04d}.png'.format(figpath_fix, idx + 1)
@@ -111,16 +114,18 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         split (str): the split of dataset to use.
     """
     
-    os.makedirs('./inference/{}/{}'.format(figpath_fix, split), exist_ok=True)
+    os.makedirs('/work/fad11204/inference/{}/{}'.format(figpath_fix, split), exist_ok=True)
 
     subs = ["seg", "dist1", "dist2", "dot"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
-    savedir = './inference/{}/{}/patch{:04d}'
+    savedir = '/work/fad11204/inference/{}/{}/patch{:04d}'
 
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
+        img = img.to(device)
+        gt = gt.to(device)
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
         imgdir = savedir.format(figpath_fix, split, idx + 1)
@@ -167,20 +172,54 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         np.save(filename_npy.format("dist2"), pred[..., 2])
         np.save(filename_npy.format("dot"), pred[..., 3])
 
+def get_work_checkpoint(model_name, USER):
+    import re
+    model_dir = re.match('(.*)_ckpt_epoch_.*', model_name)[1]
+    checkpoint = torch.load('/work/{}/outputs/{}/checkpoints/{}'.format(USER, model_dir, model_name), map_location=torch.device('cpu'))
+    print('model_name: {}'.format(model_name))
+    return checkpoint
+
+def get_checkpoint(root, model_name):
+    checkpoint = torch.load('{}/{}'.format(root, model_name), map_location=torch.device('cpu'))
+    print('model_name: {}'.format(model_name))
+    return checkpoint
+
+def run(checkpoint, model_name, with_plot=True, SPLIT='test', dataset='CoNSeP', **kwargs):
+    model = Net()
+    model.load_model(checkpoint)
+    model.to(device)
+    model.eval()
+
+    # create test data loader
+    from torch.utils.data import DataLoader
+    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, split=SPLIT, **kwargs))
+    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+
+    # inference
+    if with_plot:
+        inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
+    else:
+        inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2], split=SPLIT)
+
 if __name__ == '__main__':
     # load model
+    import re
     SPLIT = 'test'
+    USER = 'fad11204'
     # model_name = 'model_01_ckpt_epoch_11.ckpt'
-    model_name = 'model_02_ckpt_epoch_29.ckpt'
-    checkpoint = torch.load('savers_pl/{}'.format(model_name), map_location=torch.device('cpu'))
+    # model_name = 'model_01_c_p_ckpt_epoch_33.ckpt'
+    model_name = 'model_03_c_p_ckpt_epoch_18.ckpt'
+    model_dir = re.match('(.*)_ckpt_epoch_.*', model_name)[1]
+    checkpoint = torch.load('/work/{}/outputs/{}/checkpoints/{}'.format(USER, model_dir, model_name), map_location=torch.device('cpu'))
     print('model_name: {}'.format(model_name))
     model = Net()
     model.load_model(checkpoint)
+    model.to(device)
     model.eval()
     
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(root='MoNuSeg/', split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
+    test_data = CoNSeP_cropped(*data_reader(dataset='CoNSeP', ver=1, split=SPLIT, itr=0, doflip=False, contain_both=True, part=None))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
     
     # inference

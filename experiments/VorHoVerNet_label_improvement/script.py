@@ -91,7 +91,7 @@ parser.add_argument(
     type=str,
     help='method to use for generating next iteration pseudolabel',
     default='Voronoi',
-    choices=['Voronoi', 'instance'],
+    choices=['Voronoi', 'instance', 'variance'],
     required=False
 )
 parser.add_argument(

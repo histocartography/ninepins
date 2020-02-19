@@ -207,8 +207,11 @@ def main(args):
 #     ])
 
     # prepare data_loaders
-    train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
+    if DATASET == 'CoNSeP/':
+        train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
+    else:
+        train_idx = None
+    train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET[:-1], root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
