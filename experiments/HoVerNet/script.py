@@ -8,6 +8,7 @@ import numpy as np
 import sys
 import os
 import mlflow
+import scipy.io as sio
 from skimage.io import imsave
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS
 import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
@@ -47,7 +48,23 @@ parser.add_argument(
     '--prediction-dir',
     type=str,
     help='root directory containing prediction npy files',
-    default='../../histocartography/image/VorHoVerNet/hover_net/',
+    default='../../git/hover_net/src/',
+    required=False
+)
+parser.add_argument(
+    '-m',
+    '--model-dir',
+    type=str,
+    help='root directory containing certain model\'s prediction npy files',
+    default='output/',
+    required=False
+)
+parser.add_argument(
+    '-v',
+    '--version',
+    type=int,
+    help='version of model',
+    default=1,
     required=False
 )
 def main(arguments):
@@ -60,6 +77,8 @@ def main(arguments):
     DATASET_ROOT = arguments.dataset_root
     DATASET = arguments.dataset
     PREDICTION_DIR = arguments.prediction_dir
+    MODEL_DIR = arguments.model_dir
+    VERSION = arguments.version
 
     dataset = getattr(dataset_reader, DATASET)(download=False, root=DATASET_ROOT+DATASET+"/")
 
@@ -69,7 +88,8 @@ def main(arguments):
 
     for IDX in range(1, dataset.IDX_LIMITS['test'] + 1):
         filename = dataset.get_path(IDX, 'test', 'label').split('/')[-1]
-        output_map = np.load(PREDICTION_DIR + filename)
+        # output_map = np.load(PREDICTION_DIR + filename)
+        output_map = sio.loadmat(PREDICTION_DIR + MODEL_DIR + '/v{}.0/np_hv/_proc/'.format(VERSION) + filename.replace('npy', 'mat'))['inst_map']
         label, _ = dataset.read_labels(IDX, 'test')
         s = score(output_map, label, *metrics)
 

@@ -9,7 +9,7 @@ import sys
 import os
 import mlflow
 from skimage.io import imsave
-from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file
+from histocartography.image.VorHoVerNet.post_processing import get_instance_output, DEFAULT_H, DEFAULT_K, get_original_image_from_file, get_output_from_file, _refine_instance_output
 from histocartography.image.VorHoVerNet.metrics import score, VALID_METRICS, mark_nuclei, mark_pixel, dot_pred_stats
 from histocartography.image.VorHoVerNet.utils import draw_label_boundaries
 from histocartography.image.VorHoVerNet.hover import proc_np_hv
@@ -111,7 +111,7 @@ parser.add_argument(
     '--version',
     type=int,
     help='version of post processing algorithm',
-    choices=list(range(1, 6)),
+    choices=list(range(1, 7)),
     default=2,
     required=False
 )
@@ -171,16 +171,18 @@ def main(arguments):
     for IDX in range(1, dataset.IDX_LIMITS[SPLIT] + 1):
         metrics = list(VALID_METRICS.keys())
         ori = get_original_image_from_file(IDX, root=IN_PATH, split=SPLIT, ckpt=CKPT)
-        if VERSION != 5:
+        if VERSION < 5:
             output_map = get_instance_output(True, IDX, root=IN_PATH, split=SPLIT,
                                             h=SEG_THRESHOLD, k=DIS_THRESHOLD,
                                             ckpt=CKPT, dot_marker=d_m, dot_refinement=d_r, 
                                             strong_discard=STRONG_DISCARD, extra_watershed=EXTRA_WATERSHED)
         else:
-            seg, hor, vet = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
-                                        ckpt=CKPT, read_dot=False)
-            pred = np.stack([seg, hor, vet], axis=-1)
+            outputs = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
+                                        ckpt=CKPT, read_dot=d_r)
+            pred = np.stack(outputs[:3], axis=-1)
             output_map = proc_np_hv(pred)
+            if d_r:
+                output_map = _refine_instance_output(ori, output_map, outputs[3])
         if d_r:
             seg, hor, vet, dot = get_output_from_file(IDX, root=IN_PATH, split=SPLIT,
                                         ckpt=CKPT, read_dot=True)
