@@ -162,14 +162,14 @@ class CusBrontes(Brontes):
                 pred_seg = scale(pred[..., 0], 1., 0)
                 pred_hor = scale(pred[..., 1], 1., -1.)
                 pred_ver = scale(pred[..., 2], 1., -1.)
-                pred_dot = scale(pred[..., 3], 1., 0)
-                ax[2, 1].imshow(pred_dot)
+                # pred_dot = scale(pred[..., 3], 1., 0)
+                # ax[2, 1].imshow(pred_dot)
                 ax[2, 2].imshow(pred_seg)
                 ax[2, 3].imshow(pred_hor)
                 ax[2, 4].imshow(pred_ver)
                 # fourth row: original image and masked predictions
                 seg_thres = pred_seg >= 0.5
-                ax[3, 1].imshow(pred_dot >= 0.5)
+                # ax[3, 1].imshow(pred_dot >= 0.5)
                 ax[3, 2].imshow(seg_thres)
                 ax[3, 3].imshow(np.where(seg_thres == 1, pred_hor, 0))
                 ax[3, 4].imshow(np.where(seg_thres == 1, pred_ver, 0))
