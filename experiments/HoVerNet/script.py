@@ -48,7 +48,7 @@ parser.add_argument(
     '--prediction-dir',
     type=str,
     help='root directory containing prediction npy files',
-    default='../../git/hover_net/src/',
+    default='../../../git/hover_net/src/',
     required=False
 )
 parser.add_argument(
