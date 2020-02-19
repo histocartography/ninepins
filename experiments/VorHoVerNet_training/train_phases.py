@@ -208,7 +208,7 @@ def main(args):
 
     # prepare data_loaders
     train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=[1]))
+    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -224,43 +224,18 @@ def main(args):
         'val': torch.utils.data.DataLoader(valid_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUMBER_OF_WORKERS)
     }
 
-    inf_batch_train = dataset_numpy_to_tensor(train_data, batch_size=BATCH_SIZE)
-    inf_batch_valid = dataset_numpy_to_tensor(valid_data, batch_size=BATCH_SIZE)
+    inf_batch_train = dataset_numpy_to_tensor(train_data, batch_size=BATCH_SIZE//NUMBER_OF_WORKERS)
+    inf_batch_valid = dataset_numpy_to_tensor(valid_data, batch_size=BATCH_SIZE//NUMBER_OF_WORKERS)
 
-
-    # define model and optimizer
-    model = Net(batch_size=BATCH_SIZE)
-
-    # phase 1 (freeze pretrained weights)
-    set_grad(model.conv0, False)
-    set_grad(model.encoder, False)
-    optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad], lr=LEARNING_RATE)
-    
     # lr_lambda = lambda epoch: [1, 0.1, 1, 0.1][(epoch - 1)//1]
     def lr_rt(epoch, step=7):
-        e = epoch if epoch == 0 else epoch + 1
-        new_lr = (1, 0.1, 1, 0.1)[e//step]
-        print(f'current epoch: {e}, current learning rate {new_lr}')
-        return new_lr
-    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
-
-    cbrontes_model = CusBrontes(
-        model=model,
-        loss=CustomLoss(),
-        data_loaders=dataset_loaders, 
-        optimizer=optimizer, 
-        lr_scheduler=lr_scheduler,
-        metrics=None,
-        training_log_interval=LOG_INTERVAL,
-        tracker_type='mlflow',
-        visualize=INFERENCE_MODE,
-        inf_batches=[inf_batch_train, inf_batch_valid],
-        model_name=MODEL_NAME,
-        output_root=OUTPUT_ROOT,
-        num_gpus=NUMBER_OF_WORKERS,
-        load_pretrained=LOAD_PRETRAINED,
-        pretrained_path=PRETRAINED_WEIGHTS
-    )
+        if epoch < 28:
+            e = epoch if epoch == 0 else epoch + 1
+            mult = (1, 0.1, 1, 0.1)[e//step]
+        else:
+            mult = 0.1
+        print(f'current epoch: {e}, current learning rate {LEARNING_RATE * mult}')
+        return mult
 
     from pytorch_lightning.callbacks import ModelCheckpoint
     checkpoint_callback = ModelCheckpoint(
@@ -280,6 +255,32 @@ def main(args):
         verbose=VERBOSE,
         mode='min'
     )
+
+    # phase 1 (freeze pretrained weights)
+    # define model and optimizer
+    model = Net(batch_size=BATCH_SIZE)
+    set_grad(model.conv0, False)
+    set_grad(model.encoder, False)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
+
+    cbrontes_model = CusBrontes(
+        model=model,
+        loss=CustomLoss(),
+        data_loaders=dataset_loaders, 
+        optimizer=optimizer, 
+        lr_scheduler=lr_scheduler,
+        metrics=None,
+        training_log_interval=LOG_INTERVAL,
+        tracker_type='mlflow',
+        visualize=INFERENCE_MODE,
+        inf_batches=[inf_batch_train, inf_batch_valid],
+        model_name=MODEL_NAME,
+        output_root=OUTPUT_ROOT,
+        num_gpus=NUMBER_OF_WORKERS,
+        load_pretrained=LOAD_PRETRAINED,
+        pretrained_path=PRETRAINED_WEIGHTS
+    )
     
     try:
         if torch.cuda.is_available():
@@ -291,7 +292,7 @@ def main(args):
                 accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
                 default_save_path=f'{OUTPUT_ROOT}/pl_logs',
                 checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
-                distributed_backend='dp', max_epochs=MAX_EPOCH, 
+                distributed_backend='dp', max_epochs=EPOCHS, 
                 train_percent_check=1.0, val_percent_check=1.0)
                 # , val_check_interval=0.25
         else:
@@ -305,6 +306,64 @@ def main(args):
     
     # log artifacts
     cbrontes_model.log_artifacts()
+
+    # phase 2 (all parameters trainable)
+    # define model and optimizer
+    model = Net(batch_size=BATCH_SIZE)
+    # set_grad(model.conv0, True)
+    # set_grad(model.encoder, True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # optimizer.add_param_group({'params': [p for p in model.conv0.parameters()]})
+    # optimizer.add_param_group({'params': [p for p in model.encoder.parameters()]})
+    # optimizer.add_param_group({
+    #     'conv0': [p for p in model.conv0.parameters()],
+    #     'encoder': [p for p in model.encoder.parameters()]
+    # })
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
+
+    cbrontes_model = CusBrontes(
+        model=model,
+        loss=CustomLoss(),
+        data_loaders=dataset_loaders, 
+        optimizer=optimizer, 
+        lr_scheduler=lr_scheduler,
+        metrics=None,
+        training_log_interval=LOG_INTERVAL,
+        tracker_type='mlflow',
+        visualize=INFERENCE_MODE,
+        inf_batches=[inf_batch_train, inf_batch_valid],
+        model_name=MODEL_NAME,
+        output_root=OUTPUT_ROOT,
+        num_gpus=NUMBER_OF_WORKERS,
+        load_pretrained=False,
+        pretrained_path=None
+    )
+    
+    try:
+        if torch.cuda.is_available():
+            print('early_stop_minitor: {}'.format(EARLY_STOP_MONITOR))
+            print('early_stop_patience: {}'.format(EARLY_STOP_PATIENCE))
+            # print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
+            print()
+            trainer = pl.Trainer(
+                accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
+                default_save_path=f'{OUTPUT_ROOT}/pl_logs',
+                checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
+                distributed_backend='dp',
+                train_percent_check=1.0, val_percent_check=1.0)
+                # , val_check_interval=0.25
+        else:
+            trainer = pl.Trainer(
+                accumulate_grad_batches=4,
+                checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
+                distributed_backend='dp')
+        trainer.fit(cbrontes_model)
+    except KeyboardInterrupt:
+        MODEL_NAME += '_ki'
+    
+    # log artifacts
+    cbrontes_model.log_artifacts()
+
 
     # # save model
     # SAVER_PATH = 'saver_pl/'

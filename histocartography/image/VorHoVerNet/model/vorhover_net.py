@@ -24,7 +24,7 @@ from histocartography.image.VorHoVerNet.crf_loss.crfloss import CRFLoss
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 2, 1, 1, 2, 1, 3]):
+    def __init__(self, weights=[1, 1.5, 1, 1, 2, 1, 6]):
         # 'bce', 'crf', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
@@ -106,6 +106,7 @@ class CustomLoss(nn.Module):
         ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         
         loss = bce * self.weights[0] + crf * self.weights[1] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
+        # loss = bce * self.weights[0] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
 
         if contain == 'single':
             return loss

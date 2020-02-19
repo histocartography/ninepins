@@ -208,7 +208,7 @@ def main(args):
 
     # prepare data_loaders
     train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=[1]))
+    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -239,12 +239,16 @@ def main(args):
     # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
     # MAX_EPOCH = 28
     # lr_lambda = lambda epoch: [1, 0.1, 1, 0.1][(epoch - 1)//1]
-    # def lr_rt(epoch):
-    #     new_lr = (1, 0.1, 1, 0.1)[epoch + 1]
-    #     print(f'current epoch: {epoch + 1}, current learning rate {new_lr}')
-    #     return new_lr
-    # lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
+    def lr_rt(epoch, step=7):
+        if epoch < 28:
+            e = epoch if epoch == 0 else epoch + 1
+            mult = (1, 0.1, 1, 0.1)[e//step]
+        else:
+            mult = 0.1
+        print(f'current epoch: {e}, current learning rate {LEARNING_RATE * mult}')
+        return mult
+    lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_rt)
+    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.8)
 
     # print(model.state_dict()['encoder.group0.0.conv2.weight'][5][0][1:3])
     # if LOAD_PRETRAINED:

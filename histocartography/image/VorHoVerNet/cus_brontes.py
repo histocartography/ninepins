@@ -118,9 +118,9 @@ class CusBrontes(Brontes):
             preds = self.model(imgs)
 
             # transpose and reshape
-            imgs = imgs.permute(0, 2, 3, 1).data().cpu().numpy()
-            gts = gts.permute(0, 2, 3, 1).data().cpu().numpy()
-            preds = preds.data().cpu().numpy()
+            imgs = imgs.permute(0, 2, 3, 1).data.cpu().numpy()
+            gts = gts.permute(0, 2, 3, 1).data.cpu().numpy()
+            preds = preds.data.cpu().numpy()
 
             fig, ax = plt.subplots(4, 5, figsize=(12, 9))
             gap = (psize - vsize) // 2 if gap is None else gap
@@ -206,8 +206,8 @@ class CusBrontes(Brontes):
 
     def training_step(self, batch, idx, mode='train', contain='all'):
         if idx == 0 and mode == 'train':
-            for iii, p in enumerate(self.model.parameters()):
-                print(iii, p.requires_grad)
+            # for iii, p in enumerate(self.model.parameters()):
+            #     print(iii, p.requires_grad)
             # exit()
             # for pg in self.optimizers.param_groups:
             #     print(pg['lr'])
@@ -225,7 +225,7 @@ class CusBrontes(Brontes):
                 # self.set_grad(self.model.conv0, True)
                 # self.set_grad(self.model.encoder, True)
                 # self.optimizers.add_paramgroups
-        
+        # print(self.model.state_dict()['encoder.group0.0.conv1.weight'][0][1])
         # print(self.optimizers.param_groups[0]['lr'])
         # print(next(self.model.encoder.parameters()).requires_grad)
         # next(self.model.encoder.parameters()).requires_grad = False
@@ -288,7 +288,8 @@ class CusBrontes(Brontes):
         }
         # f'avg_{name}': torch.stack([x[name] for x in outputs]).mean() for name in names
         # f'avg_{name}': torch.stack([x[name] for x in outputs if len(x) == (self.batchsize // self.num_gpus)]).mean() for name in names
-        self.tracker.log_tensor_dict(validation_end_dict, step=self.validation_end_count)
+        self.tracker.log_tensor_dict(validation_end_dict, step=self.training_step_count)
+        self.tracker.log_tensor_dict({'AVL_for_epoch': validation_end_dict['avg_val_loss']}, step=self.validation_end_count)
         self.validation_end_count += 1
 
         if self.current_epoch >= self.start_epoch and self.training_started:
@@ -298,8 +299,8 @@ class CusBrontes(Brontes):
                 # TODO: pass val_loss and show on figure
                 try: 
                     self.inference()
-                except TypeError:
-                    print("asdsa")
+                except TypeError as e:
+                    print(f"TypeError {e} passed.")
 
         if self.tracker_type == 'mlflow':
             mlflow.log_param('finished epoch', self.current_epoch + 1)

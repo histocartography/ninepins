@@ -7,14 +7,14 @@ entry_points:
     parameters:
       model_name: {type: string, default: model_default}
       output_root: {type: string, default: ./outputs}
-      batch_size: {type: int, default: 8}
+      batch_size: {type: int, default: -1}
       data_path: {type: string, default: ./}
       dataset: {type: string, default: CoNSeP/}
       data_mix_rate: {type: float, default: 1.0}
       iteration: {type: int, default: 0}
       version: {type: int, default: 0}
       bucket: {type: string, default: test-data}
-      number_of_workers: {type: int, default: 1}
+      number_of_workers: {type: int, default: -1}
       learning_rate: {type: float, default: 1e-4}
       log_interval: {type: int, default: 150}
       early_stop_monitor: {type: string, default: val_loss}

@@ -13,7 +13,7 @@ export MLFLOW_TRACKING_URI=file:///work/contluty01/IBM/VorHoVerNet/mlruns
 
 mlflow run --no-conda \
 /home/contluty01/Project/IBM/ninepins/experiments/VorHoVerNet_training \
--P model_name=m_crfloss_01 \
+-P model_name=m_only_crf \
 -P data_path=/home/contluty01/Project/IBM/ninepins/histocartography/image/VorHoVerNet \
 -P version=0 \
 -P iteration=0 \

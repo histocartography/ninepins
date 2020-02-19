@@ -353,3 +353,4 @@ def show(img, save_name=None, figure_settings={}, save_settings={}):
 def set_grad(target, to):
     for p in target.parameters():
         p.requires_grad = to
+    print(f"Set requires_grad of {type(target)} to {to}.")
