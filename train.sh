@@ -10,15 +10,23 @@
 export MLFLOW_TRACKING_URI=file:///work/contluty01/IBM/VorHoVerNet/mlruns
 
 # set variables
-VERSION=01
+VERSION=00
 DATASET=CoNSeP
 STAIN_NORM=False
 SPLIT=test
 
+# other variables
+if [ $STAIN_NORM == 'False']
+then
+    SN=0
+else
+    SN=1
+fi
+
 for idx in 01 02 03 04 05
 do
     export MLFLOW_EXPERIMENT_NAME=hun_VorHoverNet_training
-    MODEL_NAME=m_ver${VERSION}_${idx}
+    MODEL_NAME=m_ver${VERSION}_sn${SN}_${idx}
     MODEL_DIR=/work/contluty01/IBM/VorHoVerNet/${MODEL_NAME}/checkpoints
 
     mlflow run --no-conda \
