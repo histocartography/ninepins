@@ -137,6 +137,13 @@ parser.add_argument(
     default=True,
     required=False
 )
+parser.add_argument(
+    '--find-best',
+    type=bool,
+    help='whether to ...',
+    default=False,
+    required=False
+)
 
 def main(arguments):
     """
@@ -157,7 +164,15 @@ def main(arguments):
     CKPT = arguments.ckpt_filename
     STRONG_DISCARD = arguments.strong_discard
     EXTRA_WATERSHED = arguments.extra_watershed
+    FIND_BEST = arguments.find_best
 
+    if FIND_BEST:
+        root = "/work/contluty01/IBM/VorHoVerNet/{}/checkpoints".format(CKPT)
+        for filename in os.listdir(root):
+            if filename.endswith(".ckpt"):
+                CKPT = filename.split('.')[-2]
+                
+    print(CKPT)
     os.makedirs(OUT_PATH, exist_ok=True)
 
     # dataset = CoNSeP(download=False, root=DATASET_PATH)

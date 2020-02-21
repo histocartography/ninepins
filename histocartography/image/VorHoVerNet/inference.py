@@ -59,11 +59,11 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
         ax[3, 0].imshow(ori)
         # first row: original image and exhausted masks
         gt_dot = gt[..., 3]
-        gtf0 = gt[..., 4]
+        gtf0 = gt[..., 5]
         gtf0 = (np.stack((gtf0,)*3, axis=-1) * 255).astype(np.uint8)
         gtf0[gt_dot == 1] = (255, 0, 0)
-        gtf1 = gt[..., 5]
-        gtf2 = gt[..., 6]
+        gtf1 = gt[..., 6]
+        gtf2 = gt[..., 7]
         ax[0, 1].imshow(gt_dot)
         ax[0, 2].imshow(gtf0)
         ax[0, 3].imshow(gtf1)
@@ -100,7 +100,7 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     # plt.show()
     plt.close()
 
-def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80, split='test'):
+def inference_without_plot(model, data_loader, user, figpath_fix='', gap=None, psize=270, vsize=80, split='test'):
     """
     Run massive inference on given model with provided data.
     Save individual result into files.
@@ -114,13 +114,13 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         split (str): the split of dataset to use.
     """
     
-    os.makedirs('/work/fad11204/inference/{}/{}'.format(figpath_fix, split), exist_ok=True)
+    os.makedirs('/work/{}/IBM/VorHoVerNet/inference/{}/{}'.format(user, figpath_fix, split), exist_ok=True)
 
     subs = ["seg", "dist1", "dist2", "dot"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
-    savedir = '/work/fad11204/inference/{}/{}/patch{:04d}'
+    savedir = '/work/{}/IBM/VorHoVerNet/inference/{}/{}/patch{:04d}'
 
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
@@ -128,7 +128,7 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         gt = gt.to(device)
         print('Current patch: {:04d}'.format(idx + 1), end='\r')
 
-        imgdir = savedir.format(figpath_fix, split, idx + 1)
+        imgdir = savedir.format(user, figpath_fix, split, idx + 1)
         os.makedirs(imgdir, exist_ok=True)
         filename = imgdir + '/{}.png'
         filename_npy = imgdir + '/{}.npy'
@@ -161,16 +161,16 @@ def inference_without_plot(model, data_loader, figpath_fix='', gap=None, psize=2
         pred0 = shift_and_scale(pred[..., 0], 255, 0).astype(np.uint8)
         pred1 = shift_and_scale(pred[..., 1], 255, 0).astype(np.uint8)
         pred2 = shift_and_scale(pred[..., 2], 255, 0).astype(np.uint8)
-        pred3 = shift_and_scale(pred[..., 3], 255, 0).astype(np.uint8)
+        # pred3 = shift_and_scale(pred[..., 3], 255, 0).astype(np.uint8)
 
         imsave(filename.format("seg"), pred0)
         imsave(filename.format("dist1"), pred1)
         imsave(filename.format("dist2"), pred2)
-        imsave(filename.format("dot"), pred3)
+        # imsave(filename.format("dot"), pred3)
         np.save(filename_npy.format("seg"), pred[..., 0])
         np.save(filename_npy.format("dist1"), pred[..., 1])
         np.save(filename_npy.format("dist2"), pred[..., 2])
-        np.save(filename_npy.format("dot"), pred[..., 3])
+        # np.save(filename_npy.format("dot"), pred[..., 3])
 
 def get_work_checkpoint(model_name, USER):
     import re
@@ -184,7 +184,7 @@ def get_checkpoint(root, model_name):
     print('model_name: {}'.format(model_name))
     return checkpoint
 
-def run(checkpoint, model_name, with_plot=True, SPLIT='test', dataset='CoNSeP', **kwargs):
+def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', dataset='CoNSeP', **kwargs):
     model = Net()
     model.load_model(checkpoint)
     model.to(device)
@@ -192,14 +192,14 @@ def run(checkpoint, model_name, with_plot=True, SPLIT='test', dataset='CoNSeP', 
 
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, split=SPLIT, **kwargs))
+    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, root='histocartography/image/VorHoVerNet/CoNSeP/', split=SPLIT, **kwargs))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
     # inference
     if with_plot:
         inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
     else:
-        inference_without_plot(model, test_loader, figpath_fix=model_name.split('.')[-2], split=SPLIT)
+        inference_without_plot(model, test_loader, user, figpath_fix=model_name.split('.')[-2], split=SPLIT)
 
 if __name__ == '__main__':
     # load model

@@ -1,7 +1,7 @@
 import numpy as np
 from histocartography.image.VorHoVerNet.performance import OutTime
 
-def get_voronoi_edges(point_mask, view=False, extra_out=None, l2_norm=True):
+def get_voronoi_edges(point_mask, view=False, extra_out=None, extra_only=False, l2_norm=True):
     '''
     Compute Voronoi edges from point mask.
     Args:
@@ -37,6 +37,12 @@ def get_voronoi_edges(point_mask, view=False, extra_out=None, l2_norm=True):
         color_map = np.where(dist_map < depth_map, i + 1, color_map)
         depth_map = np.where(dist_map < depth_map, dist_map, depth_map)
 
+    if extra_out is not None:
+        assert isinstance(extra_out, dict), "{} is not a dictionary.".format(extra_out)
+        extra_out["dist_map"] = depth_map
+        extra_out["Voronoi_cell"] = color_map
+        if extra_only: return
+
     # get voronoi edges
     edges = np.zeros(shape, dtype=np.int32)
     edges[:-1, :][color_map[1:, :] != color_map[:-1, :]] = 255
@@ -53,11 +59,6 @@ def get_voronoi_edges(point_mask, view=False, extra_out=None, l2_norm=True):
         ax[0].imshow(color_map)
         ax[1].imshow(edges)
         plt.show()
-
-    if extra_out is not None:
-        assert isinstance(extra_out, dict), "{} is not a dictionary.".format(extra_out)
-        extra_out["dist_map"] = depth_map
-        extra_out["Voronoi_cell"] = color_map
 
     return edges
 

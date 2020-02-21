@@ -104,8 +104,8 @@ class CusBrontes(Brontes):
         if self.load_pretrained:
             assert self.pretrained_path is not None, "got nothing from pretrained path"
             print(f'\tload pretrained weights from {self.pretrained_path}')
-        if self.unfreeze_at is not None:
-            print(f'\tfreeze part of model before {self.unfreeze_at}th epoch')
+        # if self.unfreeze_at is not None:
+        #     print(f'\tfreeze part of model before {self.unfreeze_at}th epoch')
 
             # reminders
             # if self.num_gpus > 1:
@@ -141,11 +141,11 @@ class CusBrontes(Brontes):
                 ax[3, 0].imshow(ori)
                 # first row: original image and exhausted masks
                 gt_dot = gt[..., 3]
-                gtf0 = gt[..., 4]
+                gtf0 = gt[..., 5]
                 gtf0 = (np.stack((gtf0,)*3, axis=-1) * 255).astype(np.uint8)
                 gtf0[gt_dot == 1] = (255, 0, 0)
-                gtf1 = gt[..., 5]
-                gtf2 = gt[..., 6]
+                gtf1 = gt[..., 6]
+                gtf2 = gt[..., 7]
                 ax[0, 1].imshow(gt_dot)
                 ax[0, 2].imshow(gtf0)
                 ax[0, 3].imshow(gtf1)

@@ -121,3 +121,4 @@ experiments/VorHoVerNet_training/outputs/
 #dstore files
 .DS_Store
 histocartography/image/VorHoVerNet/cus_brontes.py.bak
+t.sh
