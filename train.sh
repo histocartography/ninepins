@@ -16,7 +16,7 @@ STAIN_NORM=False
 SPLIT=test
 
 # other variables
-if [ $STAIN_NORM == 'False']
+if [ $STAIN_NORM == 'False' ]
 then
     SN=0
 else
