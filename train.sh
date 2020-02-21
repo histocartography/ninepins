@@ -41,7 +41,10 @@ do
     -P load_pretrained=T \
     -P stain_norm=${STAIN_NORM}
 
-    python /home/${USER}/Project/IBM/ninepins/histocartography/image/VorHoVerNet/run_inference.py
+    python /home/${USER}/Project/IBM/ninepins/histocartography/image/VorHoVerNet/run_inference.py \
+    --model_dir=${MODEL_DIR} \
+    --user=${USER} \
+    --version=${VERSION}
 
     export MLFLOW_EXPERIMENT_NAME=tye_post_processing
 
