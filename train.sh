@@ -51,19 +51,19 @@ do
     mlflow run --no-conda /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
     -P split=${SPLIT} -P prefix=dot_refinement \
     -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
-    -P version=${VERSION} -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
+    -P version=1 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
     -P distancemap-threshold=2.3 -P find-best=1
 
     # mlflow run --no-conda /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
     # -P split=${SPLIT} -P prefix=dot_refinement \
     # -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
-    # -P version=${VERSION} -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
+    # -P version=2 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
     # -P distancemap-threshold=2.3 -P find-best=1
 
     mlflow run --no-conda /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
     -P split=${SPLIT} -P prefix=dot_refinement \
     -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
-    -P version=${VERSION} -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
+    -P version=5 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
     -P find-best=1
 done
 
