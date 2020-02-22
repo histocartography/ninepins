@@ -238,6 +238,7 @@ def main(args):
             e = epoch if epoch == 0 else epoch + 1
             mult = (1, 0.1, 1, 0.1)[e//step]
         else:
+            e = epoch + 1
             mult = mults[-1]
         print(f'current epoch: {e}, current learning rate {LEARNING_RATE * mult}')
         return mult
