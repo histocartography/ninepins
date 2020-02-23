@@ -290,6 +290,50 @@ def DICE2(output_map, label):
 
     return sum(DICEs) / len(DICEs)
 
+def DICE_obj(output_map, label):
+    """
+    Compute DICE2 score of model output and label.
+    Args:
+        output_map (numpy.ndarray): model output (instance map)
+        label (numpy.ndarray): label (instance map)
+    Returns:
+        DICE2 (float)
+
+    Definition of matched nuclei:
+        nuclei exist both in model output and label, and have the maximum overlap.
+
+    For each annotated nucleus (X) and corresponding matched predicted nucleus (Y):
+        DICE = 2 * (|X intersect Y|) / (|X| + |Y|)
+    DICE2 = average of DICE
+
+    NOTE: label needs to be cropped first to fit the valid size of the model.
+    """
+    output_map = cc(output_map > 0)
+    label = cc(label > 0)
+
+    MAX_LABEL_IDX = int(label.max())
+    DICEs = []
+    for idx in range(1, MAX_LABEL_IDX + 1):
+        overlapped_indices = np.unique(output_map[label == idx])
+        if len(overlapped_indices) == 0:
+            continue
+        overlapped_percentages = []
+        B = (label == idx)
+
+        for overlapped_index in overlapped_indices:
+            if overlapped_index == 0: continue
+            A = (output_map == overlapped_index)
+            I = A & B
+
+            perc = np.count_nonzero(I) / np.count_nonzero(B)
+            DICE = 2 * np.count_nonzero(I) / (np.count_nonzero(A) + np.count_nonzero(B))
+
+            overlapped_percentages.append((perc, DICE))
+        if len(overlapped_percentages) == 0: continue
+        DICEs.append(max(overlapped_percentages, key=lambda x: x[0])[1])
+
+    return sum(DICEs) / len(DICEs)
+
 def AJI(output_map, label):
     """
     Compute Aggregated Jaccord Index of model output and label.

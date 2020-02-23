@@ -24,12 +24,13 @@ from histocartography.image.VorHoVerNet.crf_loss.crfloss import CRFLoss
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 1.5, 1, 1, 2, 1, 6]):
+    def __init__(self, weights=[1, 1.5, 1, 1, 2, 1, 6], use_crf=False):
         # 'bce', 'crf', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
 #         self.weights = self.weights / sum(self.weights)
         self.crfloss = CRFLoss(10.0, 10.0/255)
+        self.use_crf = use_crf
     
     @staticmethod
     def dice_loss(pred, gt, epsilon=1e-3):
@@ -94,7 +95,8 @@ class CustomLoss(nn.Module):
         # binary cross entropy loss
         bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # crfloss
-        # crf = self.crfloss(pred_seg.permute(0, 3, 1, 2).cpu(), Net.crop_op(image.detach().clone().data.cpu(), (190, 190))).cuda()
+        if self.use_crf:
+            crf = self.crfloss(pred_seg.permute(0, 3, 1, 2).cpu(), Net.crop_op(image.detach().clone().data.cpu(), (190, 190))).cuda()
         # masked binary cross entropy loss
         # mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
         # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
@@ -107,13 +109,20 @@ class CustomLoss(nn.Module):
         # ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         
         # loss = bce * self.weights[0] + crf * self.weights[1] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
-        loss = bce * self.weights[0] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5]
-
+        if self.use_crf:
+            loss = bce * self.weights[0] + crf * self.weights[1] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5]
+        else:
+            loss = bce * self.weights[0] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5]
+        
         if contain == 'single':
             return loss
         
-        names = ('loss', 'bce', 'dice', 'mse', 'msge')
-        losses = [loss, bce, dice, mse, msge]
+        if self.use_crf:
+            names = ('loss', 'bce', 'crf', 'dice', 'mse', 'msge')
+            losses = [loss, bce, crf, dice, mse, msge]
+        else:
+            names = ('loss', 'bce', 'dice', 'mse', 'msge')
+            losses = [loss, bce, dice, mse, msge]
         # if prefix is not None:
         #     names = ['{}_{}'.format(prefix, n) for n in names]
         return {name: loss for name, loss in zip(names, losses)}
