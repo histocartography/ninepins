@@ -21,29 +21,32 @@ def get_boundary(img):
     cmax += 1
     return [rmin, rmax, cmin, cmax]
 
-def area_vhmap(img):
+def area_vhmap(img, bot=-1.0, top=1.0):
     """
     Generate distance maps for an image with only one object in it.
     Args:
         img (numpy.ndarray[any]): the image
+        bot (float): lowest value
+        top (float): highest value
     Returns:
         (tuple)
             v_map (numpy.ndarray[float]): vertical distance map.
             h_map (numpy.ndarray[float]): horizontal distance map.
     """
     rmin, rmax, cmin, cmax = get_boundary(img)
+    dist = top - bot
     h_gap = cmax - cmin
     v_gap = rmax - rmin
     # print(rmin, rmax, cmin, cmax, v_gap, h_gap)
-    h_step = 2. / (h_gap - 1) if h_gap > 1 else 2
-    v_step = 2. / (v_gap - 1) if v_gap > 1 else 2
+    h_step = dist / (h_gap - 1) if h_gap > 1 else dist
+    v_step = dist / (v_gap - 1) if v_gap > 1 else dist
 
     v_map, h_map = [np.zeros(img.shape, dtype=np.float32) for _ in range(2)]
     v_block, h_block = [np.zeros((v_gap, h_gap), dtype=np.float32) for _ in range(2)]
     for i in range(h_gap):
-        h_block[:, i] = h_step * i - 1.
+        h_block[:, i] = bot + h_step * i
     for i in range(v_gap):
-        v_block[i, :] = v_step * i - 1.
+        v_block[i, :] = bot + v_step * i
     h_map[rmin:rmax, cmin:cmax] = h_block
     v_map[rmin:rmax, cmin:cmax] = v_block
     

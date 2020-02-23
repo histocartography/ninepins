@@ -8,6 +8,7 @@ import histocartography.image.VorHoVerNet.dataset_reader as dataset_reader
 from histocartography.image.VorHoVerNet.distance_maps import get_distancemaps
 from histocartography.image.VorHoVerNet.pseudo_label import gen_pseudo_label
 from histocartography.image.VorHoVerNet.utils import get_point_from_instance, get_random_shifted_point_from_instance
+from histocartography.image.VorHoVerNet.gaussian_filter import get_gaussian_mask
 
 
 def padninvert(img, pad_width=((0, 40), (0, 40), (0, 0))):
@@ -82,7 +83,7 @@ def get_pseudo_masks(seg_mask, point_mask, inst, contain_both=False):
         full_mask = np.stack((seg_gt.astype(np.float32), h_map, v_map), axis=-1)
         return pseudo_mask, full_mask
     return pseudo_mask
-    
+
 def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, contain_both=False):
     """
     Generate pseudo labels, including clusters, vertical and horizontal maps.
@@ -105,7 +106,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
         ori = data_reader.read_image(i, split)
         lab, type_ = data_reader.read_labels(i, split)
 
-        if ver < 4:
+        if ver < 100:
             point_mask = data_reader.read_points(i, split)
         else:
             point_mask = get_random_shifted_point_from_instance(lab, 0.8, binary=True)
@@ -127,10 +128,11 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
             seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
 
             # version adjestments
-            if ver == 0:
+            if ver:
                 # do nothing with edges
+                # ver == 5 to test if gaussian mask is useful
                 seg_mask_edge = seg_mask
-            else: # ver == 1 or ver >= 4
+            else: # ver == 1 or ver >= 100
                 # set edges as background
                 seg_mask_edge = seg_mask & (edges == 0)
         
@@ -145,6 +147,10 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
         # # mirror padding (1000x1000 to 1230x1230, 95 at left and top, 135 at right and bottom)
         # lab_, seg_mask_edge_, point_mask_ = [np.pad(tar, ((95, 135), (95, 135)), mode='reflect') for tar in [lab_, seg_mask_edge_, point_mask_]]
 
+        # get gaussian masks
+        gaussian_mask = get_gaussian_mask(point_mask, sigma=5, mag=5.0, constant=1.0)
+        gaussian_mask = np.expand_dims(gaussian_mask, axis=-1)
+
         if contain_both:
             pseudo_mask, full_mask = get_pseudo_masks(seg_mask_edge, point_mask, lab, contain_both=True)
         else:
@@ -152,7 +158,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
 
         # save npy file (and png file for visualization)
         path_pseudo = f'{root}/{split.capitalize()}/version_{ver:02d}/PseudoLabels_{itr:02d}'
-        pseudo_mask = np.concatenate((pseudo_mask, dot_mask), axis=-1)
+        pseudo_mask = np.concatenate((pseudo_mask, dot_mask, gaussian_mask), axis=-1)
         os.makedirs(path_pseudo, exist_ok=True)
         rgb_mask = np.stack((seg_mask_edge*255,)*3, axis=-1).astype(np.uint8)
         rgb_mask[dot_mask[..., 0] == 1] = (255, 0, 0)
@@ -170,7 +176,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
             np.save(f'{path_full}/{split}_{i}.npy', full_mask)
     print('')
 
-def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None):
+def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None, norm=True):
     """
     Return images and labels according to the type from split
 
@@ -290,7 +296,7 @@ class MixedDataset(torch.utils.data.Dataset):
     
     def __len__(self):
         return len(self.mixed_images)
-    
+
 
 class AugmentedDataset(torch.utils.data.Dataset):
     """
@@ -398,6 +404,7 @@ class CoNSeP_cropped(torch.utils.data.Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    for i in range(3, 4):
-        gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
-        gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)
+    # for i in range(3, 4):
+    i = 1
+    gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
+    gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)

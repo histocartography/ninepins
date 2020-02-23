@@ -105,6 +105,10 @@ parser.add_argument(
     '--data_mix_rate', type=float, default=1.0, metavar='N', 
     help='training with how much propotion of pseudo labels (default: 1.0)'
 )
+parser.add_argument(
+    '--stain_norm', type=str, default='True', metavar='N', 
+    help='whether apply stain morm (default: True)'
+)
 # parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
 #                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
@@ -136,6 +140,7 @@ def main(args):
     LOAD_PRETRAINED = True if 't' in args.load_pretrained.lower() else False
     PRETRAINED_WEIGHTS = args.pretrained_weights
     DATA_MIX_RATE = args.data_mix_rate
+    STAIN_NORM = True if 't' in args.stain_norm.lower() else False
 
     assert 0 <= DATA_MIX_RATE <= 1.0, f"data mixed rate must be between 0 and 1.0, got {DATA_MIX_RATE}"
 
@@ -208,7 +213,7 @@ def main(args):
 
     # prepare data_loaders
     train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx))
+    train_dataset = CoNSeP_cropped(*data_reader(root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx, norm=STAIN_NORM))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -228,12 +233,13 @@ def main(args):
     inf_batch_valid = dataset_numpy_to_tensor(valid_data, batch_size=BATCH_SIZE//NUMBER_OF_WORKERS)
 
     # lr_lambda = lambda epoch: [1, 0.1, 1, 0.1][(epoch - 1)//1]
-    def lr_rt(epoch, step=7):
-        if epoch < 28:
+    def lr_rt(epoch, mults=(1, 0.1, 1, 0.1), step=7):
+        if epoch < step * len(mults) - 1:
             e = epoch if epoch == 0 else epoch + 1
             mult = (1, 0.1, 1, 0.1)[e//step]
         else:
-            mult = 0.1
+            e = epoch + 1
+            mult = mults[-1]
         print(f'current epoch: {e}, current learning rate {LEARNING_RATE * mult}')
         return mult
 
@@ -361,23 +367,23 @@ def main(args):
     except KeyboardInterrupt:
         MODEL_NAME += '_ki'
     
-    # log artifacts
-    cbrontes_model.log_artifacts()
-
 
     # # save model
     # SAVER_PATH = 'saver_pl/'
-    # MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(plmodel.current_epoch)
+    MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(cbrontes_model.current_epoch)
     # os.makedirs(SAVER_PATH, exist_ok=True)
-    # saved_model = SAVER_PATH + MODEL_NAME
-    # # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
-    # state_dict = {
-    #     'epoch': plmodel.current_epoch,
-    #     'state_dict': plmodel.state_dict()
-    # }
-    # torch.save(state_dict, saved_model)
-    # # mlflow.log_artifact(save_model)
-    # print('{} saved.'.format(saved_model))
+    saved_model = OUTPUT_ROOT + '/checkpoints/' + MODEL_NAME
+    # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
+    state_dict = {
+        'epoch': cbrontes_model.current_epoch,
+        'state_dict': plmocbrontes_modeldel.state_dict()
+    }
+    torch.save(state_dict, saved_model)
+    # mlflow.log_artifact(save_model)
+    print('{} saved.'.format(saved_model))
+
+    # log artifacts
+    cbrontes_model.log_artifacts()
 
 if __name__ == "__main__":
     main(args=parser.parse_args())
