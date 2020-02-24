@@ -31,4 +31,3 @@ no_gpu_need.lsf
 train.sh
 .set_environment_variables
 ta.py
-run_inference.py

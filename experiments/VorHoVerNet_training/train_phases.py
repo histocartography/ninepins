@@ -369,18 +369,18 @@ def main(args):
     
 
     # # save model
-    # SAVER_PATH = 'saver_pl/'
-    MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(cbrontes_model.current_epoch)
-    # os.makedirs(SAVER_PATH, exist_ok=True)
-    saved_model = OUTPUT_ROOT + '/checkpoints/' + MODEL_NAME
-    # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
-    state_dict = {
-        'epoch': cbrontes_model.current_epoch,
-        'state_dict': plmocbrontes_modeldel.state_dict()
-    }
-    torch.save(state_dict, saved_model)
-    # mlflow.log_artifact(save_model)
-    print('{} saved.'.format(saved_model))
+    # # SAVER_PATH = 'saver_pl/'
+    # MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(cbrontes_model.current_epoch)
+    # # os.makedirs(SAVER_PATH, exist_ok=True)
+    # saved_model = OUTPUT_ROOT + '/checkpoints/' + MODEL_NAME
+    # # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
+    # state_dict = {
+    #     'epoch': cbrontes_model.current_epoch,
+    #     'state_dict': cbrontes_model.state_dict()
+    # }
+    # torch.save(state_dict, saved_model)
+    # # mlflow.log_artifact(save_model)
+    # print('{} saved.'.format(saved_model))
 
     # log artifacts
     cbrontes_model.log_artifacts()
