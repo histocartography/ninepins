@@ -36,12 +36,16 @@ class BaseDataset_local:
         self.ver = ver
         self.itr = itr
 
+    def pre_get_path(self, idx, split):
+        pass
+
     def get_path(self, idx, split, type_, itr=None):
         """
         Return the path for the requested data.
         Returns:
             path (str)
         """
+        self.pre_get_path(idx, split)
         self.check_path_types(type_)
         if itr is None:
             itr = self.itr
