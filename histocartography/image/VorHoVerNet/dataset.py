@@ -98,9 +98,10 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
     data_reader = dataset_class(root=root, download=False, ver=ver) if root is not None else dataset_class(download=False, ver=ver)
     IDX_LIMITS = data_reader.IDX_LIMITS
 
-    root = data_reader.root.split("/")[0]
+    root = "/".join(data_reader.root.split("/")[:-1])
     
     for i in range(1, IDX_LIMITS[split] + 1):
+    # for i in range(1, 2):
         print(f'Generating {split}ing dataset (version {ver})... {i:02d}/{IDX_LIMITS[split]:02d}', end='\r')
         
         ori = data_reader.read_image(i, split)
@@ -128,11 +129,11 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
             seg_mask, edges = gen_pseudo_label(ori, point_mask, return_edge=True)
 
             # version adjestments
-            if ver:
+            if ver: # ver != 0
                 # do nothing with edges
                 # ver == 5 to test if gaussian mask is useful
                 seg_mask_edge = seg_mask
-            else: # ver == 1 or ver >= 100
+            else: # ver == 0
                 # set edges as background
                 seg_mask_edge = seg_mask & (edges == 0)
         
@@ -176,7 +177,7 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
             np.save(f'{path_full}/{split}_{i}.npy', full_mask)
     print('')
 
-def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None, norm=True):
+def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, ver=0, itr=0, doflip=False, contain_both=False, part=None, norm=True, down_sample=False):
     """
     Return images and labels according to the type from split
 
@@ -196,6 +197,8 @@ def data_reader(dataset='CoNSeP', root=None, split='train', channel_first=True, 
     """
     dataset_class = getattr(dataset_reader, dataset)
     data_reader = dataset_class(root=root, download=False, ver=ver) if root is not None else dataset_class(download=False, ver=ver)
+    if down_sample:
+        data_reader = dataset_reader.DownSampling(data_reader)
     IDX_LIMITS = data_reader.IDX_LIMITS
     # select indice from dataset if customization is needed
     indice = range(1, IDX_LIMITS[split] + 1) if part is None else part
@@ -405,6 +408,6 @@ class CoNSeP_cropped(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     # for i in range(3, 4):
-    i = 1
-    gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
-    gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)
+    # i = 1
+    gen_pseudo_masks(dataset='MoNuSeg', split='train', root='/work/fad11204/dataset/MoNuSeg/', ver=0, itr=0, contain_both=True)
+    gen_pseudo_masks(dataset='MoNuSeg', split='test', root='/work/fad11204/dataset/MoNuSeg/', ver=0, itr=0, contain_both=True)

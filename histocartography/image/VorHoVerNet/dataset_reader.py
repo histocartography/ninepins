@@ -1,6 +1,7 @@
 from histocartography.image.VorHoVerNet.dataset_readers.CoNSeP import CoNSeP
 from histocartography.image.VorHoVerNet.dataset_readers.MoNuSeg import MoNuSeg
 from histocartography.image.VorHoVerNet.dataset_readers.CoNuSeg import CoNuSeg
+from histocartography.image.VorHoVerNet.dataset_readers.DownSampling import DownSampling
 
 if __name__ == "__main__":
     c = CoNSeP(ver=1)

@@ -109,6 +109,10 @@ parser.add_argument(
     '--stain_norm', type=str, default='True', metavar='N', 
     help='whether apply stain morm (default: True)'
 )
+parser.add_argument(
+    '--down_sample', type=str, default='False', metavar='N',
+    help='whether to down sample the images (default: False)'
+)
 # parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
 #                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
@@ -141,6 +145,7 @@ def main(args):
     PRETRAINED_WEIGHTS = args.pretrained_weights
     DATA_MIX_RATE = args.data_mix_rate
     STAIN_NORM = True if 't' in args.stain_norm.lower() else False
+    DOWN_SAMPLE = True if 't' in args.down_sample.lower() else False
 
     assert 0 <= DATA_MIX_RATE <= 1.0, f"data mixed rate must be between 0 and 1.0, got {DATA_MIX_RATE}"
 
@@ -153,6 +158,9 @@ def main(args):
 
     # make sure data folder exists
     os.makedirs(DATA_PATH, exist_ok=True)
+
+    if os.path.isdir(OUTPUT_ROOT):
+        exit()
 
     """
     # data loaders for the GLEASON 2019 dataset
@@ -220,7 +228,8 @@ def main(args):
     else:
         train_idx = None
 
-    train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET[:-1], root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx, norm=STAIN_NORM))
+    train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET[:-1], root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx, norm=STAIN_NORM, down_sample=DOWN_SAMPLE))
+    # train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET[:-1], root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=[1], norm=STAIN_NORM))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
