@@ -129,16 +129,18 @@ def random_normal_shift(center, inst, inst_idx, coords, max_retry=10, eta=0.8, v
     x_perturb = eta * x_perturb
     y_perturb = eta * y_perturb
     retry_count = 0
+    h, w = inst.shape[:2]
     while retry_count < max_retry:
         # probability of samples lying beyond 3 stds from center is almost 0.
         new_x = np.random.normal(x, x_perturb / 3)
         new_y = np.random.normal(y, y_perturb / 3)
-        if abs(new_x - x) < x_perturb and abs(new_y - y) < y_perturb and inst[int(new_y), int(new_x)] == inst_idx:
-            # if the sampled set of coordinates is beyond the perturbation range or outside the instance region, re-draw.
-            new_x = int(new_x)
-            new_y = int(new_y)
-            break
-        retry_count += 1
+        if 0 <= new_x < w and 0 <= new_y < h:
+            if abs(new_x - x) < x_perturb and abs(new_y - y) < y_perturb and inst[int(new_y), int(new_x)] == inst_idx:
+                # if the sampled set of coordinates is beyond the perturbation range or outside the instance region, re-draw.
+                new_x = int(new_x)
+                new_y = int(new_y)
+                break
+            retry_count += 1
     else:
         if verbose:
             print(f"too many retries, give up perturbating on instance: {inst_idx}")
@@ -158,7 +160,7 @@ def get_random_shifted_point_from_instance(inst, eta, ignore_size=10, binary=Fal
     """
     if eta == 0:
         return get_point_from_instance(inst, ignore_size=ignore_size, binary=binary, center_mode=center_mode)
-    assert 0 < eta <= 1, "Perturbation ratio should lie in [0, 1]."
+    # assert 0 < eta <= 1, "Perturbation ratio should lie in [0, 1]."
     return get_point_from_instance(inst, ignore_size=ignore_size, binary=binary, center_mode=center_mode, perturb_func=random_normal_shift, eta=eta, max_retry=max_retry, verbose=verbose)
 
 def booleanize_point_labels(pt_lbls):
