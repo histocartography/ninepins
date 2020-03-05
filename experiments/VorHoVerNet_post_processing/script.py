@@ -167,10 +167,10 @@ def main(arguments):
     FIND_BEST = arguments.find_best
 
     if FIND_BEST:
-        root = "/work/contluty01/IBM/VorHoVerNet/{}/checkpoints".format(CKPT)
+        root = "/work/fad11204/outputs/{}/checkpoints".format(CKPT)
         for filename in os.listdir(root):
             if filename.endswith(".ckpt"):
-                CKPT = filename.split('.')[-2]
+                CKPT = filename.replace(".ckpt", "")
                 
     print(CKPT)
     os.makedirs(OUT_PATH, exist_ok=True)

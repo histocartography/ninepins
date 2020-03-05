@@ -114,13 +114,13 @@ def inference_without_plot(model, data_loader, user, figpath_fix='', gap=None, p
         split (str): the split of dataset to use.
     """
     
-    os.makedirs('/work/{}/IBM/VorHoVerNet/inference/{}/{}'.format(user, figpath_fix, split), exist_ok=True)
+    os.makedirs('/work/{}/inference/{}/{}'.format(user, figpath_fix, split), exist_ok=True)
 
     subs = ["seg", "dist1", "dist2", "dot"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
-    savedir = '/work/{}/IBM/VorHoVerNet/inference/{}/{}/patch{:04d}'
+    savedir = '/work/{}/inference/{}/{}/patch{:04d}'
 
     gap = (psize - vsize) // 2 if gap is None else gap
     for idx, (img, gt) in enumerate(data_loader):
@@ -184,7 +184,7 @@ def get_checkpoint(root, model_name):
     print('model_name: {}'.format(model_name))
     return checkpoint
 
-def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', dataset='CoNSeP', **kwargs):
+def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', dataset='CoNSeP', root='histocartography/image/VorHoVerNet/CoNSeP/', **kwargs):
     model = Net()
     model.load_model(checkpoint)
     model.to(device)
@@ -192,14 +192,14 @@ def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', dataset='CoN
 
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, root='histocartography/image/VorHoVerNet/CoNSeP/', split=SPLIT, **kwargs))
+    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, root=root, split=SPLIT, **kwargs))
     test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
     # inference
     if with_plot:
         inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
     else:
-        inference_without_plot(model, test_loader, user, figpath_fix=model_name.split('.')[-2], split=SPLIT)
+        inference_without_plot(model, test_loader, user, figpath_fix=model_name.replace('.ckpt', ''), split=SPLIT)
 
 if __name__ == '__main__':
     # load model
