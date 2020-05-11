@@ -31,7 +31,8 @@ class CusBrontes(Brontes):
         output_root='./',
         num_gpus=1,
         load_pretrained=False,
-        pretrained_path=None
+        pretrained_path=None,
+        use_dot_branch=False
     ):
         """
         Args:
@@ -66,13 +67,15 @@ class CusBrontes(Brontes):
         self.num_gpus = num_gpus
         self.load_pretrained = load_pretrained
         self.pretrained_path = pretrained_path
+        self.use_dot_branch = use_dot_branch
 
         self.training_end_count = 0
         # self.batchsize = self.inf_batches[0][0].shape[0]
         self.start_epoch = 0
         if self.tracker_type == 'mlflow':
             mlflow.log_param('start epoch', self.start_epoch + 1)
-            mlflow.log_param('loss weights', self.loss.weights)
+            ws = [str(w) for w in self.loss.weights]
+            mlflow.log_metric('loss weights', int(''.join(ws)))
         self.num_patches = [len(dl.dataset) for dl in data_loaders.values()]
         # self.rints = [None, None] # TODO: change to bool
         self.training_started = False
@@ -90,7 +93,9 @@ class CusBrontes(Brontes):
 
     def check_params(self):
         print('\nArguments:')
-        print(f'\tstart epoch: {self.start_epoch + 1}')
+        # print(f'\tstart epoch: {self.start_epoch + 1}')
+        print(f'\tloss weights: {self.loss.weights}')
+        print(f'\tdot branch: {self.use_dot_branch}')
         print(f'\troot path: {self.output_root}')
         print(f'\tvisualize: {self.visualize}')
         print(f'\tload pretrained weights: {self.load_pretrained}')
@@ -162,14 +167,16 @@ class CusBrontes(Brontes):
                 pred_seg = scale(pred[..., 0], 1., 0)
                 pred_hor = scale(pred[..., 1], 1., -1.)
                 pred_ver = scale(pred[..., 2], 1., -1.)
-                # pred_dot = scale(pred[..., 3], 1., 0)
-                # ax[2, 1].imshow(pred_dot)
+                if self.use_dot_branch:
+                    pred_dot = scale(pred[..., 3], 1., 0)
+                    ax[2, 1].imshow(pred_dot)
                 ax[2, 2].imshow(pred_seg)
                 ax[2, 3].imshow(pred_hor)
                 ax[2, 4].imshow(pred_ver)
                 # fourth row: original image and masked predictions
                 seg_thres = pred_seg >= 0.5
-                # ax[3, 1].imshow(pred_dot >= 0.5)
+                if self.use_dot_branch:
+                    ax[3, 1].imshow(pred_dot >= 0.5)
                 ax[3, 2].imshow(seg_thres)
                 ax[3, 3].imshow(np.where(seg_thres == 1, pred_hor, 0))
                 ax[3, 4].imshow(np.where(seg_thres == 1, pred_ver, 0))

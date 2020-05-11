@@ -74,7 +74,7 @@ parser.add_argument(
     type=str,
     help='dataset ([CoNSeP, MoNuSeg])',
     default='CoNSeP',
-    choices=['CoNSeP', 'MoNuSeg'],
+    choices=['CoNSeP', 'MoNuSeg', 'CoNuSeg'],
     required=False
 )
 parser.add_argument(
@@ -144,6 +144,13 @@ parser.add_argument(
     default=False,
     required=False
 )
+parser.add_argument(
+    '--model_dir',
+    type=str,
+    help='ckpt dir',
+    default="None",
+    required=False
+)
 
 def main(arguments):
     """
@@ -165,12 +172,13 @@ def main(arguments):
     STRONG_DISCARD = arguments.strong_discard
     EXTRA_WATERSHED = arguments.extra_watershed
     FIND_BEST = arguments.find_best
+    MODEL_DIR=arguments.model_dir
 
     if FIND_BEST:
-        root = "/work/contluty01/IBM/VorHoVerNet/{}/checkpoints".format(CKPT)
-        for filename in os.listdir(root):
+        # root = MODEL_DIR
+        for filename in os.listdir(MODEL_DIR):
             if filename.endswith(".ckpt"):
-                CKPT = filename.split('.')[-2]
+                CKPT = '.'.join(filename.split('.')[:-1])
                 
     print(CKPT)
     os.makedirs(OUT_PATH, exist_ok=True)

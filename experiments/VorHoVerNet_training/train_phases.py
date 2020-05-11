@@ -109,6 +109,11 @@ parser.add_argument(
     '--stain_norm', type=str, default='True', metavar='N', 
     help='whether apply stain morm (default: True)'
 )
+
+parser.add_argument(
+    '--use_dot_branch', type=int, default=0, metavar='N', 
+    help='whether use dot branch (default: 0)'
+)
 # parser.add_argument('--inference_mode', type=bool, default=True, metavar='N', 
 #                     help='save results of inference (default: True)')
 # parser.add_argument('--vdir', type=str, default='train', 
@@ -141,8 +146,15 @@ def main(args):
     PRETRAINED_WEIGHTS = args.pretrained_weights
     DATA_MIX_RATE = args.data_mix_rate
     STAIN_NORM = True if 't' in args.stain_norm.lower() else False
+    USE_DOT_BRANCH = args.use_dot_branch
 
     assert 0 <= DATA_MIX_RATE <= 1.0, f"data mixed rate must be between 0 and 1.0, got {DATA_MIX_RATE}"
+
+    # refresh default params
+    if args.batch_size < 1:
+        mlflow.log_param('batch_size', BATCH_SIZE)
+    if args.number_of_workers < 1:
+        mlflow.log_param('number_of_workers', NUMBER_OF_WORKERS)
 
     # EXPERIMENT_NAME = f'{MODEL_NAME}_iter{ITERATION:02d}'
     # INFERENCE_MODE = True if NUMBER_OF_WORKERS == 1 else False
@@ -153,43 +165,6 @@ def main(args):
 
     # make sure data folder exists
     os.makedirs(DATA_PATH, exist_ok=True)
-
-    """
-    # data loaders for the GLEASON 2019 dataset
-    utils.download_s3_dataset(
-        utils.get_s3(), BUCKET, DATASET, DATA_PATH
-    )
-    # Get a list of all images
-    all_img_files = glob.glob(
-        os.path.join(DATA_PATH, DATASET, 'Train Imgs', '*.jpg')
-    )
-    label_image_pairs = {}
-    for filename in all_img_files:
-        slide, core = os.path.splitext(os.path.basename(filename)
-                                       )[0].split('_')
-        corresponding_img = f'{slide}_{core}.jpg'
-        label_image_pairs[f'{slide}_{core}_classimg_nonconvex.png'
-                          ] = os.path.join(
-                              DATA_PATH, DATASET, 'Train Imgs',
-                              corresponding_img
-                          )
-
-    # Choose a set of annotations
-    annotation_subpath = 'Maps*'
-    label_folder = np.random.choice(
-        glob.glob(f'{os.path.join(DATA_PATH,DATASET, annotation_subpath)}')
-    )
-    label_folder_content = glob.glob(os.path.join(label_folder, '*.png'))
-
-    # Find the names of the annotation files if
-    #  label_image_pairs[os.path.basename(label_file)]
-    pairs = [
-        (label_file, label_image_pairs.get(os.path.basename(label_file)))
-        for label_file in label_folder_content
-        if os.path.basename(label_file) in label_image_pairs
-    ]
-    log.debug(pairs)
-    """
 
     # augmentation
     # TODO: original mask at bigger size so that it can be cropped into disired size after rotation
@@ -206,21 +181,22 @@ def main(args):
     #     tfs.RandomRotation(45, fill=1.0)
     # ])
 
-#     augs_image = tfs.Compose([
-#         tfs.ToPILImage(),
-#         tfs.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
-#     ])
+    # augs_image = tfs.Compose([
+    #     tfs.ToPILImage(),
+    #     tfs.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
+    # ])
 
     # prepare data_loaders
     # train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    if DATASET == 'CoNSeP/':
+    if DATASET == 'CoNSeP':
         train_idx = [i for i in range(1, 28) if i not in (2, 4, 12, 15)]
-    elif DATASET == 'CoNuSeg/':
+    elif DATASET == 'CoNuSeg':
         train_idx = [i for i in range(1, 44) if i not in (2, 4, 12, 15)]
     else:
+        # full dataset
         train_idx = None
 
-    train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET[:-1], root=f'{DATA_PATH}/{DATASET}', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx, norm=STAIN_NORM))
+    train_dataset = CoNSeP_cropped(*data_reader(dataset=DATASET, root=f'{DATA_PATH}/{DATASET}/', split='train', ver=VERSION, itr=ITERATION, doflip=True, contain_both=True, part=train_idx, norm=STAIN_NORM))
     num_train = int(len(train_dataset) * 0.8)
     num_valid = len(train_dataset) - num_train
     train_data, valid_data = torch.utils.data.dataset.random_split(train_dataset, [num_train, num_valid])
@@ -271,7 +247,7 @@ def main(args):
 
     # phase 1 (freeze pretrained weights)
     # define model and optimizer
-    model = Net(batch_size=BATCH_SIZE)
+    model = Net(batch_size=BATCH_SIZE, use_dot_branch=USE_DOT_BRANCH)
     set_grad(model.conv0, False)
     set_grad(model.encoder, False)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -279,7 +255,7 @@ def main(args):
 
     cbrontes_model = CusBrontes(
         model=model,
-        loss=CustomLoss(),
+        loss=CustomLoss(use_dot_branch=USE_DOT_BRANCH),
         data_loaders=dataset_loaders, 
         optimizer=optimizer, 
         lr_scheduler=lr_scheduler,
@@ -292,37 +268,35 @@ def main(args):
         output_root=OUTPUT_ROOT,
         num_gpus=NUMBER_OF_WORKERS,
         load_pretrained=LOAD_PRETRAINED,
-        pretrained_path=PRETRAINED_WEIGHTS
+        pretrained_path=PRETRAINED_WEIGHTS,
+        use_dot_branch=USE_DOT_BRANCH
     )
-    
-    try:
-        if torch.cuda.is_available():
-            print('early_stop_minitor: {}'.format(EARLY_STOP_MONITOR))
-            print('early_stop_patience: {}'.format(EARLY_STOP_PATIENCE))
-            # print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
-            print()
-            trainer = pl.Trainer(
-                accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
-                default_save_path=f'{OUTPUT_ROOT}/pl_logs',
-                checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
-                distributed_backend='dp', max_epochs=EPOCHS, 
-                train_percent_check=1.0, val_percent_check=1.0)
-                # , val_check_interval=0.25
-        else:
-            trainer = pl.Trainer(
-                accumulate_grad_batches=4,
-                checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
-                distributed_backend='dp')
-        trainer.fit(cbrontes_model)
-    except KeyboardInterrupt:
-        MODEL_NAME += '_ki'
+
+    if torch.cuda.is_available():
+        print('early_stop_minitor: {}'.format(EARLY_STOP_MONITOR))
+        print('early_stop_patience: {}'.format(EARLY_STOP_PATIENCE))
+        # print('EPOCHS:', EPOCHS, [i for i in range(NUMBER_OF_WORKERS)])
+        print()
+        trainer = pl.Trainer(
+            accumulate_grad_batches=4, gpus=[i for i in range(NUMBER_OF_WORKERS)], 
+            default_save_path=f'{OUTPUT_ROOT}/pl_logs',
+            checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
+            distributed_backend='dp', max_epochs=EPOCHS, 
+            train_percent_check=1.0, val_percent_check=1.0)
+            # , val_check_interval=0.25
+    else:
+        trainer = pl.Trainer(
+            accumulate_grad_batches=4,
+            checkpoint_callback=checkpoint_callback, early_stop_callback=early_stop_callback,
+            distributed_backend='dp')
+    trainer.fit(cbrontes_model)
     
     # log artifacts
     cbrontes_model.log_artifacts()
 
     # phase 2 (all parameters trainable)
     # define model and optimizer
-    model = Net(batch_size=BATCH_SIZE)
+    model = Net(batch_size=BATCH_SIZE, use_dot_branch=USE_DOT_BRANCH)
     # set_grad(model.conv0, True)
     # set_grad(model.encoder, True)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -336,7 +310,7 @@ def main(args):
 
     cbrontes_model = CusBrontes(
         model=model,
-        loss=CustomLoss(),
+        loss=CustomLoss(use_dot_branch=USE_DOT_BRANCH),
         data_loaders=dataset_loaders, 
         optimizer=optimizer, 
         lr_scheduler=lr_scheduler,
@@ -349,7 +323,8 @@ def main(args):
         output_root=OUTPUT_ROOT,
         num_gpus=NUMBER_OF_WORKERS,
         load_pretrained=False,
-        pretrained_path=None
+        pretrained_path=None,
+        use_dot_branch=USE_DOT_BRANCH
     )
     
     try:
@@ -372,22 +347,20 @@ def main(args):
                 distributed_backend='dp')
         trainer.fit(cbrontes_model)
     except KeyboardInterrupt:
-        MODEL_NAME += '_ki'
-    
-
-    # # save model
-    # # SAVER_PATH = 'saver_pl/'
-    # MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(cbrontes_model.current_epoch)
-    # # os.makedirs(SAVER_PATH, exist_ok=True)
-    # saved_model = OUTPUT_ROOT + '/checkpoints/' + MODEL_NAME
-    # # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
-    # state_dict = {
-    #     'epoch': cbrontes_model.current_epoch,
-    #     'state_dict': cbrontes_model.state_dict()
-    # }
-    # torch.save(state_dict, saved_model)
-    # # mlflow.log_artifact(save_model)
-    # print('{} saved.'.format(saved_model))
+        pass
+        # # save model
+        # # SAVER_PATH = 'saver_pl/'
+        # MODEL_NAME = MODEL_NAME + '_epoch_{}.ckpt'.format(cbrontes_model.current_epoch)
+        # # os.makedirs(SAVER_PATH, exist_ok=True)
+        # saved_model = OUTPUT_ROOT + '/checkpoints/' + MODEL_NAME
+        # # torch.save({'state_dict': plmodel.state_dict()}, saved_model)
+        # state_dict = {
+        #     'epoch': cbrontes_model.current_epoch,
+        #     'state_dict': cbrontes_model.state_dict()
+        # }
+        # torch.save(state_dict, saved_model)
+        # # mlflow.log_artifact(save_model)
+        # print('{} saved.'.format(saved_model))
 
     # log artifacts
     cbrontes_model.log_artifacts()

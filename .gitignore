@@ -117,8 +117,11 @@ experiments/VorHoVerNet_training/outputs/
 *.hdf5
 *.json
 *.pt
+*.csv
 
 #dstore files
 .DS_Store
 histocartography/image/VorHoVerNet/cus_brontes.py.bak
 t.sh
+histocartography/image/VorHoVerNet/cp.py
+histocartography/image/VorHoVerNet/stain_norm.py

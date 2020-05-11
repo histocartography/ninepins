@@ -10,39 +10,36 @@
 export MLFLOW_TRACKING_URI=file:///work/contluty01/IBM/VorHoVerNet/mlruns
 
 # set variables
-VERSION=00
-# DATASET=CoNSeP
+DATASET=MoNuSeg
 STAIN_NORM=False
 SPLIT=test
+# idx=01
+
+# unchange variables (path or prooved being better)
+VERSION=00
 
 # other variables
-if [ $STAIN_NORM == 'False' ]
-then
+# if [ -z "${1}" ]; then
+#     echo "No PseuRate input."
+#     exit 1
+# else
+#     idx=${1}
+# fi
+
+if [ $STAIN_NORM == 'False' ]; then
     SN=0
 else
     SN=1
 fi
 
-for DATASET in CoNSeP
+for idx in {01..02}
+# for idx in {03..05}
 do
-    # for idx in {01..05}
-    for idx in 02 03
+    for RATE in 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
     do
-        MODEL_NAME=m_${DATASET}_sn${SN}_${idx}
-        MODEL_DIR=/work/contluty01/IBM/VorHoVerNet/${MODEL_NAME}/checkpoints
-
-        # mlflow run --no-conda --experiment-name m_${DATASET} \
-        # /home/contluty01/Project/IBM/ninepins/experiments/VorHoVerNet_training \
-        # -P model_name=${MODEL_NAME} \
-        # -P data_path=/home/${USER}/Project/IBM/ninepins/histocartography/image/VorHoVerNet \
-        # -P dataset=${DATASET} \
-        # -P version=${VERSION} \
-        # -P iteration=0 \
-        # -P early_stop_patience=10 \
-        # -P output_root=/work/${USER}/IBM/VorHoVerNet \
-        # -P log_interval=300 \
-        # -P load_pretrained=T \
-        # -P stain_norm=${STAIN_NORM}
+        # export MLFLOW_EXPERIMENT_NAME=hun_VorHoverNet_training
+        MODEL_NAME=m_PseuRate${RATE}_sn${SN}_${idx}
+        MODEL_DIR=/work/${USER}/IBM/VorHoVerNet/${MODEL_NAME}/checkpoints
 
         python /home/${USER}/Project/IBM/ninepins/histocartography/image/VorHoVerNet/run_inference.py \
         --model_dir=${MODEL_DIR} \
@@ -51,13 +48,25 @@ do
         --dataset=${DATASET} \
         --root=histocartography/image/VorHoVerNet/${DATASET}/
 
-        # mlflow run --no-conda  --experiment-name tye_post_processing \
-        # /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
-        # -P model_dir=${MODEL_DIR} \
-        # -P split=${SPLIT} -P prefix=dot_refinement \
-        # -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
-        # -P version=1 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
-        # -P distancemap-threshold=2.3 -P find-best=1
+        # export MLFLOW_EXPERIMENT_NAME=tye_post_processing
+
+        if [ ${DATASET} == 'MoNuSeg' ]; then
+            mlflow run --no-conda  --experiment-name mixed_pseudorate \
+            /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
+            -P model_dir=${MODEL_DIR} \
+            -P split=${SPLIT} -P prefix=dot_refinement \
+            -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
+            -P version=1 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
+            -P find-best=1
+        else
+            mlflow run --no-conda  --experiment-name mixed_pseudorate \
+            /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
+            -P model_dir=${MODEL_DIR} \
+            -P split=${SPLIT} -P prefix=dot_refinement \
+            -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
+            -P version=1 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
+            -P distancemap-threshold=2.3 -P find-best=1
+        fi
 
         # mlflow run --no-conda /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
         # -P split=${SPLIT} -P prefix=dot_refinement \
@@ -65,22 +74,13 @@ do
         # -P version=2 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
         # -P distancemap-threshold=2.3 -P find-best=1
 
-        mlflow run --no-conda --experiment-name i_test \
+        mlflow run --no-conda --experiment-name mixed_pseudorate \
         /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
         -P model_dir=${MODEL_DIR} \
         -P split=${SPLIT} -P prefix=dot_refinement \
         -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
         -P version=5 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
         -P find-best=1
-        exit 1
-        # mlflow run --no-conda --experiment-name i_CoNuSeg_CoNSeP \
-        # /home/${USER}/Project/IBM/ninepins/experiments/VorHoVerNet_post_processing \
-        # -P model_dir=${MODEL_DIR} \
-        # -P split=${SPLIT} -P prefix=dot_refinement \
-        # -P ckpt-filename=${MODEL_NAME} -P dataset=${DATASET} \
-        # -P version=6 -P inference-path=/work/${USER}/IBM/VorHoVerNet/inference \
-        # -P find-best=1
-
     done
 done
 

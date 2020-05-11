@@ -24,13 +24,14 @@ from torch.autograd import Variable
 
 class CustomLoss(nn.Module):
 
-    def __init__(self, weights=[1, 1, 1, 1, 2, 1, 3], use_crf=False, dot_branch=False):
+    def __init__(self, weights=[1, 1, 1, 1, 2, 1, 3], use_crf=False, use_dot_branch=False, use_gaussian_weight=False):
         # 'bce', 'crf', 'mbce', 'dice', 'mse', 'msge', 'ddmse'
         super(CustomLoss, self).__init__()
         self.weights = np.array(weights)
 #         self.weights = self.weights / sum(self.weights)
         self.use_crf = use_crf
-        self.dot_branch = dot_branch
+        self.use_dot_branch = use_dot_branch
+        self.use_gaussian_weight = use_gaussian_weight
 
         if self.use_crf:
             self.crfloss = CRFLoss(10.0, 10.0/255)
@@ -47,7 +48,7 @@ class CustomLoss(nn.Module):
         Reference: some codes from https://github.com/vqdang/hover_net/blob/master/src/model/graph.py
         """
         def get_sobel_kernel(size):
-            assert size % 2 == 1, 'Must be odd, get size={}'.format(size)
+            assert size % 2 == 1, f'Must be odd, get size={size}'
 
             h_range = np.arange(-size//2 + 1, size//2 + 1, dtype=np.float32)
             v_range = np.arange(-size//2 + 1, size//2 + 1, dtype=np.float32)
@@ -99,33 +100,36 @@ class CustomLoss(nn.Module):
     def forward(self, preds, gts, image, contain='single'):
         # transpose gts to channel last
         gts = gts.permute(0, 2, 3, 1)
-        # gt_seg, gt_hv, gt_dot = torch.split(gts[..., :4], [1, 2, 1], dim=-1)
-        gt_seg, gt_hv = torch.split(gts[..., :3], (1, 2), dim=-1)
-        pred_seg, pred_hv = torch.split(preds, (1, 2), dim=-1)
-        if self.use_crf:
-            gt_gau = gts[..., 4]
+        if self.use_dot_branch:
+            gt_seg, gt_hv, gt_dot = torch.split(gts[..., :4], (1, 2, 1), dim=-1)
+            pred_seg, pred_hv, pred_dot = torch.split(preds, (1, 2, 1), dim=-1)
+        else:
+            gt_seg, gt_hv = torch.split(gts[..., :3], (1, 2), dim=-1)
+            pred_seg, pred_hv = torch.split(preds, (1, 2), dim=-1)
 
         # binary cross entropy loss with gaussian mask
-        if self.use_crf:
+        if self.use_gaussian_weight:
+            gt_gau = gts[..., 4]
             bce = self.weighted_bce(pred_seg, gt_seg, gt_gau)
+        # normal binary cross entropy loss
         else:
             bce = F.binary_cross_entropy(pred_seg, gt_seg)
         # crfloss
         if self.use_crf:
             crf = self.crfloss(pred_seg.permute(0, 3, 1, 2).cpu(), Net.crop_op(image.detach().clone().data.cpu(), (190, 190))).cuda()
         # masked binary cross entropy loss
-        if self.dot_branch:
+        if self.use_dot_branch:
             mbce = F.binary_cross_entropy(pred_dot * gt_dot, gt_dot) * 3 + F.binary_cross_entropy(pred_dot, gt_dot)
             # mbce = F.binary_cross_entropy(pred_dot, gt_dot)
+            # mean square error for dot and distance maps
+            ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         # dice loss
         dice = self.dice_loss(pred_seg, gt_seg)
         # mean square error of distance maps and their gradients
         mse = F.mse_loss(pred_hv, gt_hv)
         msge = self.msge_loss(pred_hv, gt_hv, gt_seg)
-        # mean square error for dot and distance maps
-        # ddmse = self.dot_distance_loss(pred_dot, pred_hv, gt_dot, gt_hv)
         
-        if self.use_crf and self.dot_branch:
+        if self.use_crf and self.use_dot_branch:
             loss = bce * self.weights[0] + crf * self.weights[1] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
             names = ('loss', 'crf', 'mbce', 'bce', 'dice', 'mse', 'msge', 'ddmse')
             losses = [loss, crf, mbce, bce, dice, mse, msge, ddmse]
@@ -133,7 +137,7 @@ class CustomLoss(nn.Module):
             loss = bce * self.weights[0] + crf * self.weights[1] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5]
             names = ('loss', 'crf', 'bce', 'dice', 'mse', 'msge')
             losses = [loss, crf, bce, dice, mse, msge]
-        elif self.dot_branch:
+        elif self.use_dot_branch:
             loss = bce * self.weights[0] + mbce * self.weights[2] + dice * self.weights[3] + mse * self.weights[4] + msge * self.weights[5] + ddmse * self.weights[6]
             names = ('loss', 'mbce', 'bce', 'dice', 'mse', 'msge', 'ddmse')
             losses = [loss, mbce, bce, dice, mse, msge, ddmse]
@@ -303,11 +307,11 @@ class Net(nn.Module):
         'group3': '2'
     }
 
-    def __init__(self, batch_size=16, dot_branch=False):
+    def __init__(self, batch_size=16, use_dot_branch=False):
         super(Net, self).__init__()
 
         self.batch_size = batch_size
-        self.dot_branch = dot_branch
+        self.use_dot_branch = use_dot_branch
 
         self.conv0 = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=0, bias=False)
         self.conv_params = list(self.conv0.parameters())
@@ -316,12 +320,12 @@ class Net(nn.Module):
         self.encoder = Encoder(PreActResBlock, [3, 4, 6, 3])
         self.conv_bot = nn.Conv2d(2048, 1024, kernel_size=1, stride=1, padding=0, bias=False)
         self.decoder_seg = Decoder(Dense_block, [8, 4])
-        if self.dot_branch:
+        if self.use_dot_branch:
             self.decoder_dot = Decoder(Dense_block, [8, 4])
         self.decoder_hov = Decoder(Dense_block, [8, 4])
         self.BatchNorm = nn.BatchNorm2d(64)
         self.conv_seg = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
-        if self.dot_branch:
+        if self.use_dot_branch:
             self.conv_dot = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
         self.conv_hov = nn.Conv2d(64, 2, kernel_size = 1, stride=1, padding=0, bias=True)
         self.softmax = nn.Softmax(dim=-1)
@@ -349,7 +353,7 @@ class Net(nn.Module):
         pred_seg = torch.unsqueeze(pred_seg, -1)
 
         # detection branch (dot)
-        if self.dot_branch:
+        if self.use_dot_branch:
             dot_decodeds = self.decoder_dot(encodeds)
             dot_pred = F.relu(self.BatchNorm(dot_decodeds[-1]))
 
@@ -365,7 +369,7 @@ class Net(nn.Module):
         logi_hov = self.conv_hov(hov_pred).permute(0, 2, 3, 1)
         pred_hov = logi_hov # legacy of transfered from tensorflow, can be removed 
         
-        if self.dot_branch:
+        if self.use_dot_branch:
             return torch.cat((pred_seg, pred_hov, pred_dot), -1)
         return torch.cat((pred_seg, pred_hov), -1)
 

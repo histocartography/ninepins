@@ -129,10 +129,9 @@ def gen_pseudo_masks(dataset='CoNSeP', root=None, split='train', ver=0, itr=0, c
 
             # version adjestments
             if ver:
-                # do nothing with edges
-                # ver == 5 to test if gaussian mask is useful
+                # do nothing with edges ver == 1
                 seg_mask_edge = seg_mask
-            else: # ver == 1 or ver >= 100
+            else: # ver == 0 or ver >= 100
                 # set edges as background
                 seg_mask_edge = seg_mask & (edges == 0)
         
@@ -264,9 +263,9 @@ class MixedDataset(torch.utils.data.Dataset):
         self.mixed_labels = []
 
         # check input
-        _channels = 7
+        _channels = 8
         self.t_ch = 0 if self.channel_first else -1
-        assert self.dataset[0][1].shape[self.t_ch] == 7, f"label channel should be greater than {_channels}, got {self.dataset[0][1].shape[self.t_ch]}"
+        assert self.dataset[0][1].shape[self.t_ch] == _channels, f"label channel should be greater than {_channels}, got {self.dataset[0][1].shape[self.t_ch]}"
         assert 0 <= self.rate <= 1.0, f"rate must be between 0 and 1.0, got {self.rate}"
 
         self.mix()
@@ -281,8 +280,8 @@ class MixedDataset(torch.utils.data.Dataset):
         for i, (images, labels) in enumerate(self.dataset):
             if i in true_idx:
                 # split into 3, 1, 3 channels, mix and restruct
-                pseudo, point, full = np.split(labels, (3, 4),  axis=self.t_ch)
-                new_labels = np.concatenate((full, point, pseudo), axis=self.t_ch)
+                pseudo, point_and_weight, full = np.split(labels, (3, 5),  axis=self.t_ch)
+                new_labels = np.concatenate((full, point_and_weight, pseudo), axis=self.t_ch)
                 self.mixed_labels.append(new_labels) 
             else:
                 self.mixed_labels.append(labels)
@@ -404,7 +403,7 @@ class CoNSeP_cropped(torch.utils.data.Dataset):
         return len(self.crop_images)
 
 if __name__ == '__main__':
-    # for i in range(3, 4):
-    i = 1
-    gen_pseudo_masks(dataset='CoNSeP', split='train', ver=i, itr=0, contain_both=True)
-    gen_pseudo_masks(dataset='CoNSeP', split='test', ver=i, itr=0, contain_both=True)
+    # for ver in range(3, 4):
+    ver = 0
+    gen_pseudo_masks(dataset='MoNuSeg', split='train', ver=ver, itr=0, contain_both=True)
+    gen_pseudo_masks(dataset='MoNuSeg', split='test', ver=ver, itr=0, contain_both=True)

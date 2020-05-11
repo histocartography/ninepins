@@ -100,7 +100,7 @@ def inference(model, data_loader, figpath_fix='', gap=None, psize=270, vsize=80)
     # plt.show()
     plt.close()
 
-def inference_without_plot(model, data_loader, user, figpath_fix='', gap=None, psize=270, vsize=80, split='test'):
+def inference_without_plot(model, data_loader, user, figpath_fix='', gap=None, psize=270, vsize=80, split='test', batch_size=1, use_dot_branch=False):
     """
     Run massive inference on given model with provided data.
     Save individual result into files.
@@ -116,61 +116,75 @@ def inference_without_plot(model, data_loader, user, figpath_fix='', gap=None, p
     
     os.makedirs('/work/{}/IBM/VorHoVerNet/inference/{}/{}'.format(user, figpath_fix, split), exist_ok=True)
 
-    subs = ["seg", "dist1", "dist2", "dot"]
+    subs = ["seg", "dist1", "dist2", "dot"] if use_dot_branch else ["seg", "dist1", "dist2"]
     pngsubs = subs + list(map(lambda x: x+"_gt", subs))
     npysubs = subs
 
     savedir = '/work/{}/IBM/VorHoVerNet/inference/{}/{}/patch{:04d}'
 
     gap = (psize - vsize) // 2 if gap is None else gap
-    for idx, (img, gt) in enumerate(data_loader):
-        img = img.to(device)
-        gt = gt.to(device)
-        print('Current patch: {:04d}'.format(idx + 1), end='\r')
-
-        imgdir = savedir.format(user, figpath_fix, split, idx + 1)
-        os.makedirs(imgdir, exist_ok=True)
-        filename = imgdir + '/{}.png'
-        filename_npy = imgdir + '/{}.npy'
-
-        if reduce(lambda x, y: x and os.path.isfile(filename.format(y)), pngsubs, True) and \
-            reduce(lambda x, y: x and os.path.isfile(filename_npy.format(y)), npysubs, True):
-            continue
+    for idx, (imgs, gts) in enumerate(data_loader):
+        imgs = imgs.to(device)
+        gts = gts
 
         # get prediction
         with torch.no_grad():
             # pred = model(img * 255) # for old checkpoints that were trained with 0-255 images
-            pred = model(img)
+            preds = model(imgs)
         
-        # transpose and reshape
-        img = img.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
-        gt = gt.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
-        pred = pred.squeeze(0).detach().cpu().numpy()
+        # use_dot_branch = True if preds.shape[-1] == 4 else False
 
-        gt0 = shift_and_scale(gt[..., 0], 255, 0).astype(np.uint8)
-        gt1 = shift_and_scale(gt[..., 1], 255, 0).astype(np.uint8)
-        gt2 = shift_and_scale(gt[..., 2], 255, 0).astype(np.uint8)
-        gt3 = shift_and_scale(gt[..., 3], 255, 0).astype(np.uint8)
+        imgs = imgs.permute(0, 2, 3, 1).detach().cpu().numpy()
+        gts = gts.permute(0, 2, 3, 1).detach().numpy()
+        preds = preds.detach().cpu().numpy()
 
-        imsave(filename.format("seg_gt"), gt0)
-        imsave(filename.format("dist1_gt"), gt1)
-        imsave(filename.format("dist2_gt"), gt2)
-        imsave(filename.format("dot_gt"), gt3)
-        ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
-        imsave(filename.format("ori"), ori)
-        pred0 = shift_and_scale(pred[..., 0], 255, 0).astype(np.uint8)
-        pred1 = shift_and_scale(pred[..., 1], 255, 0).astype(np.uint8)
-        pred2 = shift_and_scale(pred[..., 2], 255, 0).astype(np.uint8)
-        # pred3 = shift_and_scale(pred[..., 3], 255, 0).astype(np.uint8)
+        bs = preds.shape[0]
+        for b in range(bs):
+            imgdir = savedir.format(user, figpath_fix, split, idx * batch_size + b + 1)
+            os.makedirs(imgdir, exist_ok=True)
+            filename = imgdir + '/{}.png'
+            filename_npy = imgdir + '/{}.npy'
 
-        imsave(filename.format("seg"), pred0)
-        imsave(filename.format("dist1"), pred1)
-        imsave(filename.format("dist2"), pred2)
-        # imsave(filename.format("dot"), pred3)
-        np.save(filename_npy.format("seg"), pred[..., 0])
-        np.save(filename_npy.format("dist1"), pred[..., 1])
-        np.save(filename_npy.format("dist2"), pred[..., 2])
-        # np.save(filename_npy.format("dot"), pred[..., 3])
+            if reduce(lambda x, y: x and os.path.isfile(filename.format(y)), pngsubs, True) and \
+                reduce(lambda x, y: x and os.path.isfile(filename_npy.format(y)), npysubs, True):
+                continue
+
+            print('Current patch: {:04d}'.format(idx * batch_size + b + 1), end='\r')
+            # transpose and reshape
+            # img = imgs[b, ...].permute(1, 2, 0).detach().cpu().numpy()
+            # gt = gts[b, ...].permute(1, 2, 0).detach().cpu().numpy()
+            # pred = preds[b, ...].detach().cpu().numpy()
+            img = imgs[b, ...]
+            gt = gts[b, ...]
+            pred = preds[b, ...]
+
+            gt0 = shift_and_scale(gt[..., 0], 255, 0).astype(np.uint8)
+            gt1 = shift_and_scale(gt[..., 1], 255, 0).astype(np.uint8)
+            gt2 = shift_and_scale(gt[..., 2], 255, 0).astype(np.uint8)
+            gt3 = shift_and_scale(gt[..., 3], 255, 0).astype(np.uint8)
+
+            imsave(filename.format("seg_gt"), gt0)
+            imsave(filename.format("dist1_gt"), gt1)
+            imsave(filename.format("dist2_gt"), gt2)
+            imsave(filename.format("dot_gt"), gt3)
+            ori = (img * 255).astype(np.uint8)[gap:gap+vsize, gap:gap+vsize, :]
+            imsave(filename.format("ori"), ori)
+            pred0 = shift_and_scale(pred[..., 0], 255, 0).astype(np.uint8)
+            pred1 = shift_and_scale(pred[..., 1], 255, 0).astype(np.uint8)
+            pred2 = shift_and_scale(pred[..., 2], 255, 0).astype(np.uint8)
+
+            imsave(filename.format("seg"), pred0)
+            imsave(filename.format("dist1"), pred1)
+            imsave(filename.format("dist2"), pred2)
+
+            np.save(filename_npy.format("seg"), pred[..., 0])
+            np.save(filename_npy.format("dist1"), pred[..., 1])
+            np.save(filename_npy.format("dist2"), pred[..., 2])
+
+            if use_dot_branch:
+                pred3 = shift_and_scale(pred[..., 3], 255, 0).astype(np.uint8)
+                imsave(filename.format("dot"), pred3)
+                np.save(filename_npy.format("dot"), pred[..., 3])
 
 def get_work_checkpoint(model_name, USER):
     import re
@@ -184,22 +198,33 @@ def get_checkpoint(root, model_name):
     print('model_name: {}'.format(model_name))
     return checkpoint
 
-def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', dataset='CoNSeP', **kwargs):
-    model = Net()
+def run(checkpoint, model_name, user, with_plot=True, SPLIT='test', use_dot_branch=False, dataset='CoNSeP', batch_size=-1, root='histocartography/image/VorHoVerNet/CoNSeP/', **kwargs):
+    num_gpus = torch.cuda.device_count()
+    
+    model = Net(use_dot_branch=use_dot_branch)
     model.load_model(checkpoint)
-    model.to(device)
+    if torch.cuda.is_available():
+        model = model.cuda()
+    if num_gpus > 1:
+        print(f"DataParallel model with {num_gpus} gpus.")
+        model = torch.nn.DataParallel(model)
+    # model.load_state_dict(checkpoint['state_dict'])
     model.eval()
+
+    if batch_size < 1:
+        batch_size = 12 * num_gpus if num_gpus > 0 else 12
+    print(f"batch_size: {batch_size}")
 
     # create test data loader
     from torch.utils.data import DataLoader
-    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, root='histocartography/image/VorHoVerNet/CoNSeP/', split=SPLIT, **kwargs))
-    test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+    test_data = CoNSeP_cropped(*data_reader(dataset=dataset, root=root, split=SPLIT, **kwargs))
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=num_gpus)
 
     # inference
     if with_plot:
         inference(model, test_loader, figpath_fix=model_name.split('.')[-2])
     else:
-        inference_without_plot(model, test_loader, user, figpath_fix=model_name.split('.')[-2], split=SPLIT)
+        inference_without_plot(model, test_loader, user, figpath_fix='.'.join(model_name.split('.')[:-1]), split=SPLIT, batch_size=batch_size, use_dot_branch=use_dot_branch)
 
 if __name__ == '__main__':
     # load model
